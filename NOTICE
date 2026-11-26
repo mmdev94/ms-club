@@ -1,0 +1,17 @@
+MS Club
+Copyright (c) 2026 mmdev94 — MIT licence (see LICENSE)
+
+Third-party material:
+
+- Playing card faces: Adrian Kennard's classic SVG card designs, via
+  @letele/playing-cards — CC0 1.0 (public domain).
+- Character faces: "Lorelei" by Lisa Wischofsky, via DiceBear — design CC0 1.0,
+  code MIT (Florian Körner).
+- Hand evaluation: @pokertools/evaluator — MIT.
+- Pre-flop hand tier chart in src/engine/ranges.ts: adapted from
+  poker-ai-coach by ArTeria21 (https://github.com/ArTeria21/poker-ai-coach),
+  MIT licence, Copyright (c) 2026 Easternguy. The original licence terms apply
+  to that portion:
+  "Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software ... The above copyright notice and this permission notice
+  shall be included in all copies or substantial portions of the Software."

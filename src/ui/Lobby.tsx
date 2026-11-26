@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { LEVELS, type Level } from '../engine/brain'
 import { CHARACTERS } from '../engine/characters'
 import { Avatar } from './Avatar'
 import { PlayingCard } from './Card'
@@ -18,7 +19,7 @@ function useServedBy() {
 
 const FAN = ['As', 'Kh', 'Qd', 'Jc', 'Ts']
 
-export function Lobby({ name, setName, onPlay }: { name: string; setName: (n: string) => void; onPlay: () => void }) {
+export function Lobby({ name, setName, level, setLevel, onPlay }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void }) {
   const servedBy = useServedBy()
   return (
     <div className="relative min-h-full overflow-hidden">
@@ -46,7 +47,27 @@ export function Lobby({ name, setName, onPlay }: { name: string; setName: (n: st
             onChange={(e) => setName(e.target.value)}
             className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-lg text-cream outline-none focus:border-gold"
           />
-          <button onClick={onPlay} className="btn-gold mt-1 py-3.5 text-lg">
+          <p className="mt-2 text-left text-[13px] font-semibold uppercase tracking-[0.14em] text-cream/50">How good are the regulars?</p>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Difficulty">
+            {LEVELS.map((x, i) => (
+              <button
+                key={x.id}
+                role="radio"
+                aria-checked={level === x.id}
+                onClick={() => setLevel(x.id)}
+                className={`rounded-xl border px-2 py-2.5 text-center transition ${level === x.id ? 'border-gold bg-gold/15 text-gold' : 'border-white/15 text-cream/70 hover:border-white/35'}`}
+              >
+                <span className="block font-semibold">{x.name}</span>
+                <span className="mt-1 flex justify-center gap-1" aria-hidden>
+                  {[0, 1, 2].map((k) => (
+                    <span key={k} className={`h-1.5 w-4 rounded-full ${k <= i ? (level === x.id ? 'bg-gold' : 'bg-cream/60') : 'bg-white/15'}`} />
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="min-h-[40px] text-left text-[14px] leading-snug text-cream/60">{LEVELS.find((x) => x.id === level)?.blurb}</p>
+          <button onClick={onPlay} className="btn-gold py-3.5 text-lg">
             Take a seat
           </button>
           <div className="flex gap-2 text-[13px] text-cream/50">

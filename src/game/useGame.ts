@@ -2,7 +2,7 @@
 // event at a time (deal, bet, flop…) so the table can animate each step. Bots
 // "think" for a moment before acting; the human acts through the controls.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { decide } from '../engine/bot'
+import { learn, think, type Level, type Memory } from '../engine/brain'
 import { rng, type Card } from '../engine/cards'
 import { CHARACTERS, line, type Character, type Mood } from '../engine/characters'
 import { shortName } from '../engine/hand'
@@ -153,7 +153,7 @@ export interface Game {
   land: (id: number) => void
 }
 
-export function useGame(name = 'You', seed?: string): Game {
+export function useGame(name = 'You', level: Level = 'normal', seed?: string): Game {
   const random = useRef(rng(seed ?? `${Date.now()}`)).current
   const [players, setPlayers] = useState<Player[]>(() => [
     { id: 'you', name, stack: START_STACK, character: null },
@@ -167,6 +167,7 @@ export function useGame(name = 'You', seed?: string): Game {
   const handNo = useRef(0)
   const dealer = useRef(Math.floor(random() * 5))
   const bluffs = useRef(new Set<number>())
+  const memory = useRef<Memory>(new Map())
 
   const deal = useCallback(
     (ps: Player[]) => {
@@ -228,6 +229,7 @@ export function useGame(name = 'You', seed?: string): Game {
   // hand over: keep the new stacks, then deal again
   useEffect(() => {
     if (!caughtUp || !engine || engine.phase !== 'done') return
+    learn(memory.current, players.map((p) => p.id), engine.events)
     const stacks = engine.seats.map((x) => x.stack)
     const next = players.map((p, i) => ({ ...p, stack: stacks[i] }))
     setPlayers(next)
@@ -250,7 +252,7 @@ export function useGame(name = 'You', seed?: string): Game {
     setThinking(seat)
     const t = setTimeout(
       () => {
-        const d = decide(engine, c.style, random)
+        const d = think(engine, c, level, random, memory.current, players.map((p) => p.id))
         const next = act(engine, d.action)
         const last = next.events.findLast((x) => x.type === 'act')
         if (last?.type === 'act') {
@@ -269,7 +271,7 @@ export function useGame(name = 'You', seed?: string): Game {
       (fast ? 250 : 650) + random() * (fast ? 300 : 900),
     )
     return () => clearTimeout(t)
-  }, [caughtUp, engine, players, random, fast])
+  }, [caughtUp, engine, players, random, fast, level])
 
   const myTurn = caughtUp && engine && engine.phase !== 'done' && engine.toAct === 0 ? legal(engine) : null
   const mine = view.seats[0]
