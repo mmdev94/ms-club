@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Level } from '../engine/brain'
 import { CHARACTERS } from '../engine/characters'
+import { commit, deckFromSeed, randomSecret, seedFrom, type FairRecord } from '../engine/fair'
 import { legal, type State } from '../engine/holdem'
 import { maskFor, publicSeat, type Room } from '../net/room'
 import { lookFor } from './looks'
@@ -20,11 +21,25 @@ export interface Guest {
   online: boolean
 }
 
-export function useHost(room: Room, o: { name: string; level: Level; look: Look }): Table & { guests: Guest[] } {
+/** How long the host waits for friends' shuffle secrets before dealing without them */
+const MIX_WAIT_MS = 2000
+
+export interface FairStatus {
+  hand: number
+  /** friends whose secret went into this hand's shuffle */
+  mixed: string[]
+  missing: string[]
+  record: FairRecord | null
+}
+
+export function useHost(room: Room, o: { name: string; level: Level; look: Look }): Table & { guests: Guest[]; fair: FairStatus | null } {
   const guests = useRef(new Map<string, Guest>())
   const [guestList, setGuestList] = useState<Guest[]>([])
   const latest = useRef<{ engine: State | null; players: Player[]; startStacks: number[]; deadline: number | null }>({ engine: null, players: [], startStacks: [], deadline: null })
   const started = useRef(false)
+  // the fair shuffle, per hand: my secret, the seal, friends' secrets as they arrive
+  const shuffles = useRef(new Map<number, { secret: string; seal: string; allowed: Set<string>; mixes: Map<string, string>; record: FairRecord | null; done?: () => void }>())
+  const [fair, setFair] = useState<FairStatus | null>(null)
 
   const sendTo = useCallback(
     (g: Guest) => {
@@ -32,8 +47,11 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
       if (!engine || !g.online) return
       const seat = g.seat ?? -1
       const mine = seat >= 0 && !g.waiting && engine.toAct === seat && engine.phase !== 'done'
+      const sh = shuffles.current.get(engine.hand)
+      // the secrets only once the hand is over; before that, just the seal
+      const fairInfo = sh?.record ? (engine.phase === 'done' ? sh.record : { hand: engine.hand, seal: sh.seal }) : undefined
       room.hand.send(
-        { hand: engine.hand, seat: g.waiting ? -1 : seat, events: maskFor(engine.events, g.waiting ? -1 : seat), startStacks, legal: mine ? legal(engine) : null, deadline: mine ? deadline : null, thinking: engine.toAct },
+        { hand: engine.hand, seat: g.waiting ? -1 : seat, events: maskFor(engine.events, g.waiting ? -1 : seat), startStacks, legal: mine ? legal(engine) : null, deadline: mine ? deadline : null, thinking: engine.toAct, fair: fairInfo },
         g.peerId,
       )
     },
@@ -45,7 +63,37 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
     room.table.set({ level: o.level, started: started.current, seats: players.map(publicSeat) })
   }, [room, o.level])
 
+  const prepare = useCallback(
+    async (hand: number, players: Player[]) => {
+      const secret = randomSecret()
+      const seal = await commit(secret)
+      const friends = players.filter((p) => p.kind === 'remote' && !p.away)
+      const sh = { secret, seal, allowed: new Set(friends.map((f) => f.id)), mixes: new Map<string, string>(), record: null as FairRecord | null, done: undefined as undefined | (() => void) }
+      shuffles.current.set(hand, sh)
+      shuffles.current.delete(hand - 3)
+      room.seal.send({ hand, seal })
+      // wait for every friend's secret, or MIX_WAIT_MS
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, friends.length ? MIX_WAIT_MS : 0)
+        sh.done = () => {
+          if (friends.every((f) => sh.mixes.has(f.id))) {
+            clearTimeout(t)
+            resolve()
+          }
+        }
+        sh.done()
+      })
+      const contributions = friends.filter((f) => sh.mixes.has(f.id)).map((f) => ({ id: f.id, name: f.name, secret: sh.mixes.get(f.id)! }))
+      const seed = await seedFrom(hand, secret, contributions)
+      sh.record = { hand, seal, hostSecret: secret, friends: contributions, missing: friends.filter((f) => !sh.mixes.has(f.id)).map((f) => f.name), seed }
+      setFair({ hand, mixed: contributions.map((c) => c.name), missing: sh.record.missing ?? [], record: sh.record })
+      return deckFromSeed(seed)
+    },
+    [room],
+  )
+
   const table = useGame({
+    prepare,
     name: o.name,
     level: o.level,
     look: o.look,
@@ -99,6 +147,13 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
       publish()
       sendTo(g)
     })
+    room.mix.on((m, userId) => {
+      const sh = shuffles.current.get(m.hand)
+      // only before the deal, and only from a seated friend
+      if (!sh || sh.record || !/^[0-9a-f]{64}$/.test(m.secret) || !sh.allowed.has(userId)) return
+      sh.mixes.set(userId, m.secret)
+      sh.done?.()
+    })
     room.move.on((m, _peerId, userId) => {
       const g = guests.current.get(userId)
       if (!g || g.seat === null || g.waiting) return
@@ -123,5 +178,5 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { ...table, guests: guestList }
+  return { ...table, guests: guestList, fair }
 }

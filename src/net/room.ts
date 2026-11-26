@@ -7,6 +7,7 @@ import type { Card } from '../engine/cards'
 import type { Action, Event, Legal } from '../engine/holdem'
 import type { Look, Player } from '../game/useGame'
 import type { Flair } from '../game/playback'
+import type { FairRecord } from '../engine/fair'
 
 export const APP_ID = 'mmdev94/ms-club'
 /** public Nostr relays that answered in testing; every browser uses all of them so two players always share one */
@@ -37,6 +38,8 @@ export interface HandView {
   legal: Legal | null
   deadline: number | null
   thinking: number
+  /** the shuffle's seal, and once the hand is over all the secrets */
+  fair?: FairRecord
 }
 
 export interface Hello {
@@ -57,6 +60,10 @@ export interface Room {
   move: { send: (m: { hand: number; action: Action }) => void; on: (f: (m: { hand: number; action: Action }, peerId: string, userId: string) => void) => void }
   flair: { send: (f: Flair) => void; on: (f: (x: Flair) => void) => void }
   emote: { send: (e: { seat: number; text: string }) => void; on: (f: (e: { seat: number; text: string }, userId: string) => void) => void }
+  /** host → everyone: the hash of its secret for the next hand */
+  seal: { send: (s: { hand: number; seal: string }) => void; on: (f: (s: { hand: number; seal: string }, peerId: string) => void) => void }
+  /** friend → host: this browser's secret for the shuffle */
+  mix: { send: (m: { hand: number; secret: string }, to: string) => void; on: (f: (m: { hand: number; secret: string }, userId: string) => void) => void }
 }
 
 export async function openRoom(opts: { host: true } | { host: false; roomId: string }): Promise<Room> {
@@ -72,6 +79,8 @@ export async function openRoom(opts: { host: true } | { host: false; roomId: str
   const move = room.makeAction<{ hand: number; action: Action }>('move')
   const flair = room.makeAction<Flair>('flair', { roles: 'admin' })
   const emote = room.makeAction<{ seat: number; text: string }>('emote')
+  const seal = room.makeAction<{ hand: number; seal: string }>('seal', { roles: 'admin' })
+  const mix = room.makeAction<{ hand: number; secret: string }>('mix')
   return {
     roomId: self.roomId,
     me: self.userId,
@@ -87,6 +96,8 @@ export async function openRoom(opts: { host: true } | { host: false; roomId: str
     move: { send: (m) => void move.send(m), on: (f) => void move.onMessage((m, c) => f(m, c.peerId, c.userId)) },
     flair: { send: (x) => void flair.send(x), on: (f) => void flair.onMessage((x) => f(x)) },
     emote: { send: (e) => void emote.send(e), on: (f) => void emote.onMessage((e, c) => f(e, c.userId)) },
+    seal: { send: (s) => void seal.send(s), on: (f) => void seal.onMessage((s, c) => c.roles.includes('admin') && f(s, c.peerId)) },
+    mix: { send: (m, to) => void mix.send(m, { target: to }), on: (f) => void mix.onMessage((m, c) => f(m, c.userId)) },
   }
 }
 

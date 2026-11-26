@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { byId } from '../engine/characters'
 import { shortName } from '../engine/hand'
+import { randomSecret, verify, type Check, type FairRecord } from '../engine/fair'
 import type { Action } from '../engine/holdem'
+import { BLINDS } from './useGame'
 import { rotate, rotateEvents, type HandView, type Room, type TableInfo } from '../net/room'
 import { lookFor } from './looks'
 import { usePlayback } from './playback'
@@ -12,17 +14,38 @@ import type { Game, Look, Player } from './useGame'
 
 export type GuestStatus = 'connecting' | 'waiting' | 'watching' | 'playing' | 'host-left'
 
-export function useGuest(room: Room, o: { name: string; look: Look }): Game & { status: GuestStatus; info: TableInfo | null } {
+/** The fair shuffle as this browser sees it: sealed during the hand, checked after. */
+export interface GuestFair {
+  hand: number
+  sealed: boolean
+  /** my secret went to the host */
+  mixed: boolean
+  check: Check | null
+  record: FairRecord | null
+}
+
+export function useGuest(room: Room, o: { name: string; look: Look }): Game & { status: GuestStatus; info: TableInfo | null; fair: GuestFair | null } {
   const [info, setInfo] = useState<TableInfo | null>(null)
   const [hv, setHv] = useState<HandView | null>(null)
   const [hostGone, setHostGone] = useState(false)
   const [fast, setFast] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
   const hostPeer = useRef<string | null>(null)
+  const secrets = useRef(new Map<number, string>())
+  const [fair, setFair] = useState<GuestFair | null>(null)
 
   useEffect(() => {
     const hi = () => room.hello.send({ name: o.name, look: o.look })
     room.table.onChange((t) => setInfo(t))
+    // the host sealed its secret for the next hand: add ours to the shuffle
+    room.seal.on((x, peerId) => {
+      hostPeer.current = peerId
+      const secret = randomSecret()
+      secrets.current.set(x.hand, secret)
+      secrets.current.delete(x.hand - 5)
+      room.mix.send({ hand: x.hand, secret }, peerId)
+      setFair({ hand: x.hand, sealed: true, mixed: true, check: null, record: { hand: x.hand, seal: x.seal } })
+    })
     room.hand.on((h, fromHost, peerId) => {
       if (!fromHost) return
       hostPeer.current = peerId
@@ -46,6 +69,22 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // once a hand is over and its secrets are out, check it
+  const checked = useRef(new Set<number>())
+  useEffect(() => {
+    if (!hv?.fair?.hostSecret || checked.current.has(hv.hand) || !hv.events.some((e) => e.type === 'end')) return
+    checked.current.add(hv.hand)
+    const start = hv.events.find((e) => e.type === 'hand')
+    const seen = hv.events.flatMap((e) => (e.type === 'deal' && e.cards[0] ? [{ seat: e.seat, cards: e.cards }] : e.type === 'reveal' ? [{ seat: e.seat, cards: e.cards }] : []))
+    const unique = [...new Map(seen.map((x) => [x.seat, x])).values()]
+    const board = hv.events.flatMap((e) => (e.type === 'street' ? e.cards : []))
+    const record = hv.fair
+    const mine = secrets.current.get(hv.hand)
+    verify(record, { mySecret: hv.seat >= 0 ? mine : undefined, myId: room.me, stacks: hv.startStacks, dealer: start?.type === 'hand' ? start.dealer : 0, sb: BLINDS[0], bb: BLINDS[1], seen: unique, board }).then((check) =>
+      setFair({ hand: hv.hand, sealed: true, mixed: !!mine, check, record }),
+    )
+  }, [hv, room.me])
 
   const n = info?.seats.length || 5
   const listed = info?.seats.findIndex((s) => s.id === room.me) ?? -1
@@ -116,5 +155,6 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
     land: (id) => dispatch({ type: 'land', id }),
     status,
     info,
+    fair: fair ?? (hv?.fair ? { hand: hv.hand, sealed: true, mixed: secrets.current.has(hv.hand), check: null, record: hv.fair } : null),
   }
 }

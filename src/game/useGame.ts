@@ -3,7 +3,7 @@
 // moves arrive over the network. Bots "think" for a moment before acting.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { learn, think, type Level, type Memory } from '../engine/brain'
-import { rng } from '../engine/cards'
+import { rng, type Card } from '../engine/cards'
 import { CHARACTERS, line, type Character } from '../engine/characters'
 import { shortName } from '../engine/hand'
 import { act, legal, startHand, type Action, type Legal, type State } from '../engine/holdem'
@@ -73,7 +73,17 @@ export interface Table extends Game {
 
 export const botSeats = (n = 4): Player[] => CHARACTERS.slice(0, n).map((c) => ({ id: c.id, name: c.name, stack: START_STACK, character: c, kind: 'bot' }))
 
-export function useGame(o: { name: string; level: Level; seed?: string; seats?: Player[]; hooks?: HostHooks; autoStart?: boolean; look?: Look }): Table {
+export function useGame(o: {
+  name: string
+  level: Level
+  seed?: string
+  seats?: Player[]
+  hooks?: HostHooks
+  autoStart?: boolean
+  look?: Look
+  /** produce the deck for a hand before it's dealt (the fair shuffle at friends' tables) */
+  prepare?: (hand: number, players: Player[]) => Promise<Card[]>
+}): Table {
   const random = useRef(rng(o.seed ?? `${Date.now()}:${Math.random()}`)).current
   const [players, setPlayers] = useState<Player[]>(() => o.seats ?? [{ id: 'you', name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look }, ...botSeats()])
   const [engine, setEngine] = useState<State | null>(null)
@@ -89,6 +99,8 @@ export function useGame(o: { name: string; level: Level; seed?: string; seats?: 
   const pending = useRef(new Map<number, Player | ((old: Player) => Player)>())
   const hooks = useRef(o.hooks)
   hooks.current = o.hooks
+  const prepare = useRef(o.prepare)
+  prepare.current = o.prepare
 
   const pb = usePlayback({ hand: engine?.hand ?? 0, events: engine?.events ?? [], startStacks: startStacks.current, names: players.map((p) => p.name), fast, onEvent: (e) => e.type === 'award' && awardFlair(e) })
   const { view, dispatch, caughtUp } = pb
@@ -127,17 +139,22 @@ export function useGame(o: { name: string; level: Level; seed?: string; seats?: 
       // bots and friends who went broke are topped up; you choose (rebuy)
       ps = ps.map((p) => (p.kind !== 'me' && p.stack <= 0 ? { ...p, stack: START_STACK } : p))
       if (ps.filter((p) => p.stack > 0).length < 2) return
-      handNo.current++
-      dealer.current = (dealer.current + 1) % ps.length
-      while (ps[dealer.current].stack <= 0) dealer.current = (dealer.current + 1) % ps.length
-      bluffs.current.clear()
-      startStacks.current = ps.map((p) => p.stack)
-      const s = startHand(
-        ps.map((p) => ({ id: p.id, name: p.name, stack: p.stack })),
-        { hand: handNo.current, dealer: dealer.current, sb: BLINDS[0], bb: BLINDS[1], seed: `${o.seed ?? 'free'}:${handNo.current}:${random()}` },
-      )
-      setPlayers(ps)
-      setEngine(s)
+      const hand = handNo.current + 1
+      const go = (deck?: Card[]) => {
+        handNo.current = hand
+        dealer.current = (dealer.current + 1) % ps.length
+        while (ps[dealer.current].stack <= 0) dealer.current = (dealer.current + 1) % ps.length
+        bluffs.current.clear()
+        startStacks.current = ps.map((p) => p.stack)
+        const s = startHand(
+          ps.map((p) => ({ id: p.id, name: p.name, stack: p.stack })),
+          { hand, dealer: dealer.current, sb: BLINDS[0], bb: BLINDS[1], deck, seed: `${o.seed ?? 'free'}:${hand}:${random()}` },
+        )
+        setPlayers(ps)
+        setEngine(s)
+      }
+      if (prepare.current) prepare.current(hand, ps).then(go, () => go())
+      else go()
     },
     [random, o.seed],
   )

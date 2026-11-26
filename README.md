@@ -28,7 +28,8 @@ Hard vs Normal heads-up: +2.7 bb/100. Everything runs in the browser; the pre-fl
 - The host's browser runs the game. The room's admin key makes the host verifiable, and only the host can change the table.
 - Each friend is sent the hand with everyone else's cards hidden until they are shown at showdown; their moves come back and are checked before they count.
 - Empty seats are played by the regulars at the host's level. Friends who join late take a bot's seat at the next hand; friends who leave are replaced by a bot (with their chips). 30 seconds per turn.
-- Honest limit: the host's browser knows all the cards. Play with people you trust; a provably fair shuffle is planned.
+- **Provably fair shuffle** (src/engine/fair.ts): before each hand the host's browser seals a secret (publishes its SHA-256 hash); every friend's browser adds its own random secret; the deck is shuffled from all of them (SHA-256 stream, Fisher–Yates with rejection sampling). After the hand every secret is revealed and each friend's browser checks the seal, that its own secret was used, and every card it saw. Nobody — host or friend — can choose or predict the cards.
+- Honest limit: during the hand the host's browser still knows every card. Play with people you trust.
 
 `room-test.html` is the connection test for online tables (WebRTC rooms via [trystero](https://github.com/dmotz/trystero), meeting through public Nostr relays).
 

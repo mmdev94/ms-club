@@ -2,8 +2,8 @@ import { motion } from 'framer-motion'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Level } from '../engine/brain'
 import { lookFor } from '../game/looks'
-import { useGuest } from '../game/useGuest'
-import { useHost } from '../game/useHost'
+import { useGuest, type GuestFair } from '../game/useGuest'
+import { useHost, type FairStatus } from '../game/useHost'
 import type { Game } from '../game/useGame'
 import { openRoom, type Room } from '../net/room'
 import { Avatar } from './Avatar'
@@ -71,6 +71,62 @@ function CopyLink({ link, compact = false }: { link: string; compact?: boolean }
   )
 }
 
+// ── the fair shuffle badge and its explanation ──────────────────────────────
+
+function FairBadge({ host, guest }: { host?: FairStatus | null; guest?: GuestFair | null }) {
+  const [open, setOpen] = useState(false)
+  const state = guest ? (guest.check ? (guest.check.ok ? 'ok' : 'bad') : guest.sealed ? 'sealed' : 'none') : host ? 'host' : 'none'
+  if (state === 'none') return null
+  const label = state === 'ok' ? '✓ Fair shuffle' : state === 'bad' ? '✗ Shuffle check failed' : state === 'sealed' ? '🔒 Shuffle sealed' : `🔒 Fair shuffle · ${host!.mixed.length} mixed in`
+  const tone = state === 'bad' ? 'border-ruby text-ruby' : state === 'ok' ? 'border-[#3fbf7f] text-[#7ee0a8]' : 'border-white/20 text-cream/75'
+  const record = guest?.record ?? host?.record ?? null
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className={`whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold ${tone}`} title="How the shuffle is checked">
+        {label}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={() => setOpen(false)}>
+          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#15121c] p-6 text-left shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="font-display text-2xl text-cream">A shuffle nobody can rig</p>
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[14px] leading-relaxed text-cream/75">
+              <li>Before each hand the host’s browser picks a secret and announces only its fingerprint (a SHA-256 hash): the <em>seal</em>.</li>
+              <li>Every friend’s browser then adds its own random secret.</li>
+              <li>The deck is shuffled from all the secrets together. The host sealed first and can’t see the others in advance, so nobody can choose the cards.</li>
+              <li>After the hand all secrets are revealed, and each friend’s browser checks the seal, its own secret, and every card it saw.</li>
+            </ol>
+            {guest?.check && (
+              <div className={`mt-4 rounded-xl border p-3 text-[14px] ${guest.check.ok ? 'border-[#3fbf7f]/50 bg-[#3fbf7f]/10' : 'border-ruby/60 bg-ruby/10'}`}>
+                <p className="font-semibold text-cream">Hand {guest.hand}, checked in your browser:</p>
+                <ul className="mt-1.5 space-y-1 text-cream/85">
+                  {guest.check.lines.map((l) => (
+                    <li key={l}>{l}</li>
+                  ))}
+                </ul>
+                {!guest.check.ok && <p className="mt-2 text-[13px] text-cream/60">If only “your secret” failed, your browser may simply have answered too late. Any other failure means the host’s browser did not deal honestly.</p>}
+              </div>
+            )}
+            {guest && !guest.check && <p className="mt-4 text-[14px] text-cream/70">This hand is sealed{guest.mixed ? ' and your secret is in' : ''}. It is checked as soon as the hand ends.</p>}
+            {host && (
+              <p className="mt-4 text-[14px] text-cream/70">
+                Hand {host.hand}: {host.mixed.length ? `${host.mixed.join(', ')} mixed in their secrets` : 'no friends at the table yet'}.{host.missing.length ? ` No answer in time from ${host.missing.join(', ')}.` : ''} Your friends’ browsers check every hand.
+              </p>
+            )}
+            <p className="mt-4 text-[13px] text-cream/45">Honest limit: during the hand the host’s browser still knows every card, so play with people you trust.</p>
+            {record?.seed && (
+              <details className="mt-4 text-[12px] text-cream/55">
+                <summary className="cursor-pointer text-cream/70">The raw data</summary>
+                <pre className="mt-2 whitespace-pre-wrap break-all font-mono">{JSON.stringify(record, null, 1)}</pre>
+              </details>
+            )}
+            <button onClick={() => setOpen(false)} className="btn-light mt-5 w-full">Close</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function Overlay({ children }: { children: ReactNode }) {
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-black/55 p-4 backdrop-blur-[2px]">
@@ -105,7 +161,8 @@ function HostTable({ room, name, level, onLeave }: { room: Room; name: string; l
       }
       right={
         <>
-          <span className="hidden font-mono text-[13px] text-cream/50 sm:inline">{friends.length} {friends.length === 1 ? 'friend' : 'friends'} · {level}</span>
+          <span className="hidden font-mono text-[13px] text-cream/50 lg:inline">{friends.length} {friends.length === 1 ? 'friend' : 'friends'} · {level}</span>
+          {t.started && friends.length > 0 && <FairBadge host={t.fair} />}
           <CopyLink link={link} compact />
         </>
       }
@@ -207,7 +264,18 @@ function GuestTable({ room, name, onLeave }: { room: Room; name: string; onLeave
           {host ? `${host}’s` : 'A'} <span className="text-gold">table</span>
         </>
       }
-      right={g.status === 'watching' ? <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-cream/70">Watching · seat from next hand</span> : <CopyLink link={inviteLink(room.roomId)} compact />}
+      right={
+        g.status === 'watching' ? (
+          <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-cream/70">Watching · seat from next hand</span>
+        ) : (
+          <>
+            <FairBadge guest={g.fair} />
+            <span className="hidden sm:inline">
+              <CopyLink link={inviteLink(room.roomId)} compact />
+            </span>
+          </>
+        )
+      }
     >
       {overlay}
     </Shell>
