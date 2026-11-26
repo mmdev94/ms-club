@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    background: #0c0b10;
+    color: #f6efe2;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+}
+
+@layer components {
+  .btn-gold { @apply rounded-full bg-gradient-to-b from-[#f3d48a] to-[#c99a45] px-6 py-2.5 font-bold text-ink shadow-[0_8px_24px_-8px_rgba(232,195,106,.7)] transition hover:brightness-110 active:scale-[.98]; }
+  .btn-light { @apply rounded-full bg-cream px-6 py-2.5 font-bold text-ink transition hover:bg-white active:scale-[.98]; }
+  .btn-dark { @apply rounded-full border border-white/20 bg-black/40 px-6 py-2.5 font-bold text-cream transition hover:border-white/40 active:scale-[.98]; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping { animation: none; }
+}
