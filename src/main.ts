@@ -4,7 +4,7 @@
 import { joinRoom, roles } from 'trystero'
 import { finalizeEvent, generateSecretKey, getPublicKey, SimplePool, verifyEvent } from 'nostr-tools'
 
-const APP = 'mmdev94/bluff-club'
+const APP = 'mmdev94/ms-club'
 const RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.nostr.net', 'wss://nostr.mom', 'wss://offchain.pub']
 const $ = (id: string) => document.getElementById(id)!
 const T: Record<string, unknown> = { log: [] as string[], peers: 0, rtt: null, tableSeen: null, forgedRejected: null, posted: null, loaded: null }
@@ -41,7 +41,7 @@ function show() {
 }
 show()
 $('copy').onclick = async () => {
-  const text = [`Bluff Club room test — ${new Date().toISOString()}`, ...Object.entries(R).map(([k, v]) => `${k}: ${v}`), '', ...(T.log as string[])].join('\n')
+  const text = [`MS Club room test — ${new Date().toISOString()}`, ...Object.entries(R).map(([k, v]) => `${k}: ${v}`), '', ...(T.log as string[])].join('\n')
   try {
     await navigator.clipboard.writeText(text)
     $('copy').textContent = 'Copied ✓'
@@ -161,13 +161,13 @@ else {
 
 // ── 2. leaderboard on relays ──────────────────────────────────────────────────
 const day = new Date().toISOString().slice(0, 10)
-const TAG = `bluffclub-test-${day}`
+const TAG = `msclub-test-${day}`
 const pool = new SimplePool()
 let sk: Uint8Array
 try {
-  const saved = localStorage.getItem('bluffclub-test-key')
+  const saved = localStorage.getItem('msclub-test-key')
   sk = saved ? Uint8Array.from(saved.match(/../g)!.map((h) => parseInt(h, 16))) : generateSecretKey()
-  localStorage.setItem('bluffclub-test-key', [...sk].map((b) => b.toString(16).padStart(2, '0')).join(''))
+  localStorage.setItem('msclub-test-key', [...sk].map((b) => b.toString(16).padStart(2, '0')).join(''))
 } catch {
   sk = generateSecretKey()
 }

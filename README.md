@@ -1,4 +1,4 @@
-# Bluff Club
+# MS Club
 
 Texas Hold'em with friends and funny AI players, in the browser — no account, no game server. Play chips only, never real money.
 
