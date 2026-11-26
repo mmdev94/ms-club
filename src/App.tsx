@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Level } from './engine/brain'
+import { lookFor } from './game/looks'
 import { useGame } from './game/useGame'
 import { Controls } from './ui/Controls'
 import { Lobby } from './ui/Lobby'
+import { GuestScreen, HostScreen } from './ui/Online'
 import { Table } from './ui/Table'
 
 const load = (k: string, d: string) => {
@@ -20,8 +22,15 @@ const save = (k: string, v: string) => {
   }
 }
 
-function Game({ name, level, onLeave }: { name: string; level: Level; onLeave: () => void }) {
-  const game = useGame(name, level)
+type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string }
+
+const fromHash = (): Screen => {
+  const m = /^#\/t\/(.+)$/.exec(location.hash)
+  return m ? { at: 'join', roomId: decodeURIComponent(m[1]) } : { at: 'lobby' }
+}
+
+function Solo({ name, level, onLeave }: { name: string; level: Level; onLeave: () => void }) {
+  const game = useGame({ name, level, look: lookFor(name) })
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between px-4 py-2.5">
@@ -40,28 +49,35 @@ function Game({ name, level, onLeave }: { name: string; level: Level; onLeave: (
 }
 
 export default function App() {
-  const [name, setName] = useState(() => load('msclub-name', 'You'))
-  const [level, setLevel] = useState<Level>(() => (['easy', 'normal', 'hard'].includes(load('msclub-level', '')) ? (load('msclub-level', 'normal') as Level) : 'normal'))
-  const [seated, setSeated] = useState(false)
+  const [name, setNameState] = useState(() => load('msclub-name', 'You'))
+  const [level, setLevelState] = useState<Level>(() => (['easy', 'normal', 'hard'].includes(load('msclub-level', '')) ? (load('msclub-level', 'normal') as Level) : 'normal'))
+  const [screen, setScreen] = useState<Screen>(fromHash)
+  const setName = (n: string) => {
+    setNameState(n)
+    save('msclub-name', n)
+  }
+  const setLevel = (l: Level) => {
+    setLevelState(l)
+    save('msclub-level', l)
+  }
+  useEffect(() => {
+    const on = () => setScreen(fromHash())
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+  const toLobby = () => {
+    if (location.hash) history.replaceState(null, '', location.pathname)
+    setScreen({ at: 'lobby' })
+  }
+  const who = name.trim() || 'You'
   return (
     <div className="h-full">
-      {seated ? (
-        <Game name={name.trim() || 'You'} level={level} onLeave={() => setSeated(false)} />
-      ) : (
+      {screen.at === 'solo' && <Solo name={who} level={level} onLeave={toLobby} />}
+      {screen.at === 'host' && <HostScreen name={who} level={level} onLeave={toLobby} />}
+      {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} onLeave={toLobby} />}
+      {screen.at === 'lobby' && (
         <div className="h-full overflow-y-auto">
-          <Lobby
-            name={name}
-            setName={(n) => {
-              setName(n)
-              save('msclub-name', n)
-            }}
-            level={level}
-            setLevel={(l) => {
-              setLevel(l)
-              save('msclub-level', l)
-            }}
-            onPlay={() => setSeated(true)}
-          />
+          <Lobby name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} />
         </div>
       )}
     </div>

@@ -19,7 +19,7 @@ function useServedBy() {
 
 const FAN = ['As', 'Kh', 'Qd', 'Jc', 'Ts']
 
-export function Lobby({ name, setName, level, setLevel, onPlay }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void }) {
+export function Lobby({ name, setName, level, setLevel, onPlay, onHost }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void }) {
   const servedBy = useServedBy()
   return (
     <div className="relative min-h-full overflow-hidden">
@@ -68,12 +68,12 @@ export function Lobby({ name, setName, level, setLevel, onPlay }: { name: string
           </div>
           <p className="min-h-[40px] text-left text-[14px] leading-snug text-cream/60">{LEVELS.find((x) => x.id === level)?.blurb}</p>
           <button onClick={onPlay} className="btn-gold py-3.5 text-lg">
-            Take a seat
+            Play the regulars
           </button>
-          <div className="flex gap-2 text-[13px] text-cream/50">
-            <span className="flex-1 rounded-lg border border-white/10 px-3 py-2">Daily Table · soon</span>
-            <span className="flex-1 rounded-lg border border-white/10 px-3 py-2">Play with friends · soon</span>
-          </div>
+          <button onClick={onHost} className="btn-dark py-3.5 text-lg">
+            Play with friends
+          </button>
+          <p className="text-[13px] leading-relaxed text-cream/45">Opens a private table and gives you a link. Friends join from any browser — no account. The regulars fill empty seats.</p>
         </div>
 
         <h2 className="mt-16 font-display text-3xl text-cream">Meet the regulars</h2>

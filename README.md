@@ -20,6 +20,16 @@ Measured with `scripts/arena.ts`: 3,000 deals per seating, every deal played twi
 
 Hard vs Normal heads-up: +2.7 bb/100. Everything runs in the browser; the pre-flop tier chart is adapted from [poker-ai-coach](https://github.com/ArTeria21/poker-ai-coach) (MIT) — see NOTICE.
 
+## Play with friends
+
+"Play with friends" opens a private table and gives you a link. Friends join from any browser — no account, no server:
+
+- Browsers find each other through public Nostr relays (only to exchange connection details) and then talk directly over WebRTC ([trystero](https://github.com/dmotz/trystero)).
+- The host's browser runs the game. The room's admin key makes the host verifiable, and only the host can change the table.
+- Each friend is sent the hand with everyone else's cards hidden until they are shown at showdown; their moves come back and are checked before they count.
+- Empty seats are played by the regulars at the host's level. Friends who join late take a bot's seat at the next hand; friends who leave are replaced by a bot (with their chips). 30 seconds per turn.
+- Honest limit: the host's browser knows all the cards. Play with people you trust; a provably fair shuffle is planned.
+
 `room-test.html` is the connection test for online tables (WebRTC rooms via [trystero](https://github.com/dmotz/trystero), meeting through public Nostr relays).
 
 ## Run it

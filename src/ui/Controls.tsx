@@ -13,12 +13,12 @@ export function Controls({ game }: { game: Game }) {
     if (l) setTo(l.minTo)
   }, [l?.seat, l?.minTo, view.hand, view.board.length])
 
-  const busted = players[0].stack <= 0 && view.over && view.seats[0].stack <= 0
+  const busted = !!players[0] && players[0].stack <= 0 && view.over && view.seats[0]?.stack <= 0
   if (busted)
     return (
       <Panel>
         <p className="text-cream/80">Out of chips. It happens to the best of us.</p>
-        <button onClick={game.rebuy} className="btn-gold">Buy back in · 2,000 free chips</button>
+        {game.canRebuy ? <button onClick={game.rebuy} className="btn-gold">Buy back in · 2,000 free chips</button> : <p className="text-[14px] text-cream/60">The table tops you up to 2,000 at the next hand.</p>}
       </Panel>
     )
 
@@ -27,7 +27,7 @@ export function Controls({ game }: { game: Game }) {
       <Panel>
         <p className="min-h-[24px] text-[15px] text-cream/70">
           {myHand ? <span className="mr-3 rounded-full bg-gold/15 px-3 py-1 font-semibold text-gold">{myHand}</span> : null}
-          {view.seats[0]?.folded ? 'You folded — watch the regulars fight it out.' : game.thinking > 0 ? `${players[game.thinking].name} is thinking…` : view.over ? 'Next hand coming up…' : ' '}
+          {view.seats[0]?.folded ? 'You folded — watch the others fight it out.' : game.thinking > 0 && players[game.thinking] ? <Waiting name={players[game.thinking].name} deadline={game.deadline} /> : view.over ? 'Next hand coming up…' : ' '}
         </p>
         <label className="flex cursor-pointer items-center gap-2 text-[13px] text-cream/60">
           <input type="checkbox" checked={game.fast} onChange={(e) => game.setFast(e.target.checked)} className="accent-[#e8c36a]" />
@@ -45,6 +45,7 @@ export function Controls({ game }: { game: Game }) {
 
   return (
     <Panel>
+      {game.deadline && <Countdown deadline={game.deadline} />}
       <AnimatePresence>
         {myHand && (
           <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-full bg-gold/15 px-3 py-1 text-[14px] font-semibold text-gold">
@@ -90,4 +91,40 @@ export function Controls({ game }: { game: Game }) {
 
 function Panel({ children }: { children: React.ReactNode }) {
   return <div className="flex min-h-[112px] flex-col items-center justify-center gap-3 border-t border-white/10 bg-black/40 px-4 py-4 backdrop-blur">{children}</div>
+}
+
+function useNow(on: boolean) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!on) return
+    const t = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(t)
+  }, [on])
+  return now
+}
+
+/** "Ana is thinking… 18 s" */
+function Waiting({ name, deadline }: { name: string; deadline: number | null }) {
+  const now = useNow(!!deadline)
+  const left = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null
+  return (
+    <>
+      {name} is thinking…{left !== null && <span className="ml-2 font-mono text-gold/80">{left} s</span>}
+    </>
+  )
+}
+
+/** Your time to act at a friends' table. */
+function Countdown({ deadline }: { deadline: number }) {
+  const now = useNow(true)
+  const left = Math.max(0, deadline - now)
+  const share = Math.min(1, left / 30000)
+  return (
+    <div className="flex w-full max-w-[520px] items-center gap-3 text-[13px] text-cream/60">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+        <div className={`h-full rounded-full ${share < 0.25 ? 'bg-ruby' : 'bg-gold'}`} style={{ width: `${share * 100}%`, transition: 'width .25s linear' }} />
+      </div>
+      <span className="font-mono">{Math.ceil(left / 1000)} s</span>
+    </div>
+  )
 }

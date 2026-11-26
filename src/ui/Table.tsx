@@ -233,13 +233,13 @@ export function Table({ game }: { game: Game }) {
               key={i}
               at={L.seats[i]}
               s={s}
-              name={players[i].name}
+              name={players[i]?.name ?? ''}
               me={i === 0}
               thinking={thinking === i}
               dealer={view.dealer === i && view.hand > 0}
               place={placeFor(L.seats[i], L)}
               over={view.over}
-              look={players[i].character?.look ?? PLAYER_LOOK}
+              look={players[i]?.character?.look ?? players[i]?.look ?? PLAYER_LOOK}
             />
           ))}
 
