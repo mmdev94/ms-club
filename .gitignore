@@ -2,3 +2,4 @@ node_modules
 dist
 media/*.webm
 media/raw/
+media/samples/

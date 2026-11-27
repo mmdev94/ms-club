@@ -1,6 +1,7 @@
 """Turns the WebM recordings in media/raw/ into the GIFs in media/.
 
-    python3 scripts/make-gifs.py /path/to/ffmpeg      (Playwright's bundled ffmpeg works)
+    python3 scripts/make-gifs.py /path/to/ffmpeg [regulars|puzzle|friends|all]
+    (Playwright's bundled ffmpeg works)
 """
 import glob, json, os, subprocess, sys, tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -27,32 +28,40 @@ def save_gif(imgs, path, fps):
     q[0].save(path, save_all=True, append_images=q[1:], duration=int(1000 / fps), loop=0, optimize=True)
     print(path, len(imgs), 'frames', round(os.path.getsize(path) / 1e6, 1), 'MB')
 
-# 1. one hand against the regulars
+# 1. a hand against the regulars, ending in Mind-read
 if ONLY in ('all', 'regulars'):
-  fs = frames(f'{RAW}/regulars.webm')
-  step, fps = 3, FPS_IN / 3
-  fs = fs[int(0.8 * FPS_IN)::step][: int(40 * fps)]  # at most 40 s
-  save_gif([Image.open(f).convert('RGB').resize((800, 500), Image.LANCZOS) for f in fs], 'media/regulars.gif', fps)
-if ONLY == 'regulars':
-  sys.exit(0)
+    fs = frames(f'{RAW}/regulars.webm')
+    fps = FPS_IN / 3
+    fs = fs[int(1.6 * FPS_IN)::3][: int(45 * fps)]  # skip the page load; at most 45 s
+    save_gif([Image.open(f).convert('RGB').resize((800, 500), Image.LANCZOS) for f in fs], 'media/regulars.gif', fps)
 
-# 2. host (laptop) and friend (phone) side by side, in step
-off = json.load(open(f'{RAW}/times.json'))['guestOffsetMs'] / 1000
-hf, gf = frames(f'{RAW}/host.webm'), frames(f'{RAW}/guest.webm')
-W, H = 1200, 640
-F = font(20)
-out = []
-for i in range(int(1.0 * FPS_IN), len(hf), 4):
-    t = i / FPS_IN
-    j = int((t - off) * FPS_IN)
-    canvas = Image.new('RGB', (W, H), (12, 11, 16))
-    h = Image.open(hf[i]).convert('RGB').resize((840, 580), Image.LANCZOS)
-    canvas.paste(h, (24, 44))
-    if 0 <= j < len(gf):
-        g = Image.open(gf[j]).convert('RGB').resize((298, 580), Image.LANCZOS)
-        canvas.paste(g, (884 + 2, 44))
-    d = ImageDraw.Draw(canvas)
-    d.text((24, 12), 'Host · laptop', font=F, fill=(232, 195, 106))
-    d.text((886, 12), 'Friend · phone', font=F, fill=(232, 195, 106))
-    out.append(canvas)
-save_gif(out, 'media/friends.gif', FPS_IN / 4)
+# 2. Spot the Bluff on a phone
+if ONLY in ('all', 'puzzle'):
+    fs = frames(f'{RAW}/puzzle.webm')
+    fps = FPS_IN / 3
+    fs = fs[int(1.4 * FPS_IN)::3]
+    save_gif([Image.open(f).convert('RGB').resize((320, 688), Image.LANCZOS) for f in fs], 'media/puzzle.gif', fps)
+
+# 3. host (laptop) and friend (phone) side by side, in step
+if ONLY in ('all', 'friends'):
+    off = json.load(open(f'{RAW}/times.json'))['guestOffsetMs'] / 1000
+    hf, gf = frames(f'{RAW}/host.webm'), frames(f'{RAW}/guest.webm')
+    W, H = 1000, 540
+    F = font(18)
+    out = []
+    for i in range(int(1.0 * FPS_IN), len(hf), 5):
+        t = i / FPS_IN
+        j = int((t - off) * FPS_IN)
+        if j >= len(gf):
+            break  # the phone's recording ended
+        canvas = Image.new('RGB', (W, H), (12, 11, 16))
+        h = Image.open(hf[i]).convert('RGB').resize((700, 484), Image.LANCZOS)
+        canvas.paste(h, (20, 40))
+        if j >= 0:
+            g = Image.open(gf[j]).convert('RGB').resize((249, 484), Image.LANCZOS)
+            canvas.paste(g, (736, 40))
+        d = ImageDraw.Draw(canvas)
+        d.text((20, 10), 'Host · laptop', font=F, fill=(232, 195, 106))
+        d.text((736, 10), 'Friend · phone', font=F, fill=(232, 195, 106))
+        out.append(canvas)
+    save_gif(out, 'media/friends.gif', FPS_IN / 5)
