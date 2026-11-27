@@ -38,8 +38,9 @@ const readAsDataUrl = (f: Blob) =>
   })
 
 async function toSquare(file: File): Promise<string> {
-  const url = URL.createObjectURL(file)
-  try {
+  // a data: URL, not a blob: one — ms.computer's security policy only allows data: images
+  const url = await readAsDataUrl(file)
+  {
     const img = new Image()
     img.src = url
     await img.decode()
@@ -49,8 +50,6 @@ async function toSquare(file: File): Promise<string> {
     c.getContext('2d')!.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, SIDE, SIDE)
     const webp = c.toDataURL('image/webp', 0.85)
     return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg', 0.85)
-  } finally {
-    URL.revokeObjectURL(url)
   }
 }
 
