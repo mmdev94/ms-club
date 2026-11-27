@@ -20,6 +20,22 @@ Measured with `scripts/arena.ts`: 3,000 deals per seating, every deal played twi
 
 Hard vs Normal heads-up: +2.7 bb/100. Everything runs in the browser; the pre-flop tier chart is adapted from [poker-ai-coach](https://github.com/ArTeria21/poker-ai-coach) (MIT) — see NOTICE.
 
+## Living regulars
+
+- **Animated faces:** each regular breathes, blinks and changes expression with their mood (DiceBear Lorelei, CC0).
+- **Tells:** every regular has a habit that gives their hand away — Grandma fiddles with her glasses when she bluffs, Maniac really grins when he's strong, The Rock blinks twice when he's weak, The Shark raises an eyebrow (rarely). Honest most of the time on Easy, less on Normal, often faked on Hard.
+- **Tilt:** after a big loss a regular steams, turns angry and plays looser and wilder for a few hands; a big win calms them down. Tilt is plain arithmetic, so Daily Table replays still match.
+- **Mind-read:** after a hand, open any regular's head — every decision with its reason and win chance, their cards, and a 13×13 map of the hands they put you on.
+- **Your face:** pick the cartoon, or upload a picture or GIF (cropped in the browser; GIFs up to 400 KB stay animated). Shared with friends at your table.
+
+## Hand replays
+
+"Share this hand" packs the finished hand — as you saw it, folded cards hidden — into the link itself (compressed JSON), and the replay plays it back with the same animations. No server.
+
+## Spot the Bluff
+
+One decision a day, the same for everyone: a regular bets into you on the river. Call or fold? Their cards flip over; streaks and a share line. The day's seed plays hands between the regulars until it finds a fair question (heads-up, a middling hand, no split pot), about half of them bluffs (src/game/puzzle.ts).
+
 ## Daily Table and leaderboard
 
 - **Daily Table:** 20 hands against the four regulars (Normal), the same for everyone that day: the cards come from the day's seed, and so does every random choice the bots make. A whole session is therefore decided by the player's moves alone (src/game/daily.ts).

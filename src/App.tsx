@@ -6,6 +6,7 @@ import { Controls } from './ui/Controls'
 import { Board, DailyScreen } from './ui/Daily'
 import { OgCard } from './ui/Og'
 import { ReplayScreen } from './ui/Replay'
+import { PuzzleScreen } from './ui/Puzzle'
 import { loadFace } from './ui/Face'
 import { Lobby } from './ui/Lobby'
 import { GuestScreen, HostScreen } from './ui/Online'
@@ -26,13 +27,14 @@ const save = (k: string, v: string) => {
   }
 }
 
-type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string } | { at: 'og' } | { at: 'replay'; code: string }
+type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string } | { at: 'og' } | { at: 'replay'; code: string } | { at: 'puzzle' }
 
 const fromHash = (): Screen => {
   const m = /^#\/t\/(.+)$/.exec(location.hash)
   if (m) return { at: 'join', roomId: decodeURIComponent(m[1]) }
   if (location.hash === '#/daily') return { at: 'daily' }
   if (location.hash === '#/og') return { at: 'og' }
+  if (location.hash === '#/puzzle') return { at: 'puzzle' }
   const r = /^#\/r\/([A-Za-z0-9_-]+)$/.exec(location.hash)
   if (r) return { at: 'replay', code: r[1] }
   const b = /^#\/board(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(location.hash)
@@ -82,7 +84,7 @@ export default function App() {
     setScreen({ at: 'lobby' })
   }
   const who = name.trim() || 'You'
-  const go = (at: 'daily' | 'board') => {
+  const go = (at: 'daily' | 'board' | 'puzzle') => {
     history.replaceState(null, '', `${location.pathname}#/${at}`)
     setScreen({ at })
   }
@@ -92,12 +94,13 @@ export default function App() {
       {screen.at === 'host' && <HostScreen name={who} level={level} face={face} onLeave={toLobby} />}
       {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} face={face} setFace={setFace} onLeave={toLobby} />}
       {screen.at === 'og' && <OgCard />}
+      {screen.at === 'puzzle' && <PuzzleScreen onLeave={toLobby} />}
       {screen.at === 'replay' && <ReplayScreen code={screen.code} onLeave={toLobby} />}
       {screen.at === 'daily' && <DailyScreen name={who} face={face} onLeave={toLobby} onBoard={() => go('board')} />}
       {screen.at === 'board' && <Board onLeave={toLobby} onPlay={() => go('daily')} start={screen.day} />}
       {screen.at === 'lobby' && (
         <div className="h-full overflow-y-auto">
-          <Lobby face={face} setFace={setFace} name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} onDaily={() => go('daily')} onBoard={() => go('board')} />
+          <Lobby face={face} setFace={setFace} name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} onDaily={() => go('daily')} onBoard={() => go('board')} onPuzzle={() => go('puzzle')} />
         </div>
       )}
     </div>

@@ -5,6 +5,9 @@ import { CHARACTERS } from '../engine/characters'
 import { Avatar } from './Avatar'
 import { playedToday } from './Daily'
 import { FacePicker } from './Face'
+import { puzzleDone } from './Puzzle'
+import { puzzleNumber } from '../game/puzzle'
+import { dayKey } from '../game/daily'
 import { PlayingCard } from './Card'
 
 /** "Delivered by a miner": this page reads its own answer from ms.computer. */
@@ -21,9 +24,10 @@ function useServedBy() {
 
 const FAN = ['As', 'Kh', 'Qd', 'Jc', 'Ts']
 
-export function Lobby({ face, setFace, name, setName, level, setLevel, onPlay, onHost, onDaily, onBoard }: { face?: string; setFace: (f: string | undefined) => void; name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void; onDaily: () => void; onBoard: () => void }) {
+export function Lobby({ face, setFace, name, setName, level, setLevel, onPlay, onHost, onDaily, onBoard, onPuzzle }: { face?: string; setFace: (f: string | undefined) => void; name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void; onDaily: () => void; onBoard: () => void; onPuzzle: () => void }) {
   const servedBy = useServedBy()
   const played = playedToday()
+  const puzzle = puzzleDone()
   return (
     <div className="relative min-h-full overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(91,42,134,.55),transparent_60%),radial-gradient(ellipse_at_50%_100%,rgba(15,92,69,.5),transparent_55%)]" />
@@ -89,6 +93,14 @@ export function Lobby({ face, setFace, name, setName, level, setLevel, onPlay, o
               <button onClick={onBoard} className="btn-dark py-2.5 text-[15px]">Leaderboard</button>
             </div>
           </div>
+          <button onClick={onPuzzle} className="flex items-center gap-3 rounded-2xl border border-white/12 bg-white/[.04] p-4 text-left hover:border-gold/50">
+            <span className="text-3xl" aria-hidden>🕵️</span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-display text-xl text-cream">Spot the Bluff #{puzzleNumber(dayKey())}</span>
+              <span className="block text-[13.5px] text-cream/60">{puzzle ? (puzzle.right ? 'Solved today ✅ — see you tomorrow' : 'Missed today ❌ — new one tomorrow') : 'One river bet. Call or fold? 10 seconds a day.'}</span>
+            </span>
+            <span className="text-gold">→</span>
+          </button>
         </div>
 
         <h2 className="mt-16 font-display text-3xl text-cream">Meet the regulars</h2>
