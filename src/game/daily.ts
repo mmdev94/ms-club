@@ -6,7 +6,7 @@
 // The bots play at Normal: its maths uses only + − × ÷ and rounding, which give
 // the same results in every browser (Hard uses exp/pow, which may differ in the
 // last digit between browsers and would break replays).
-import { think, type Level, type Memory } from '../engine/brain.ts'
+import { nextTilt, think, type Level, type Memory } from '../engine/brain.ts'
 import { rng } from '../engine/cards.ts'
 import { CHARACTERS } from '../engine/characters.ts'
 import { act, legal, startHand, type Action, type State } from '../engine/holdem.ts'
@@ -44,11 +44,14 @@ export function dealDaily(day: string, hand: number, seats: Seat[], dealer: numb
   return startHand(seats, { hand, dealer, sb: DAILY_BLINDS[0], bb: DAILY_BLINDS[1], seed: dailySeed(day, hand) })
 }
 
-/** A bot's move at the Daily Table. */
-export function dailyBotMove(s: State, random: () => number, memory: Memory): Action {
+/** A bot's move at the Daily Table. `tilt` is that bot's tilt (0–1). */
+export function dailyBotMove(s: State, random: () => number, memory: Memory, tilt = 0): Action {
   const c = CHARACTERS[s.toAct - 1]
-  return think(s, c, DAILY_LEVEL, random, memory, ['you', ...CHARACTERS.map((x) => x.id)]).action
+  return think(s, c, DAILY_LEVEL, random, memory, ['you', ...CHARACTERS.map((x) => x.id)], tilt).action
 }
+
+/** Tilt after a hand, for every bot seat (the player's own entry stays 0). */
+export const tiltAfter = (tilt: number[], start: number[], final: number[]) => tilt.map((t, i) => (i === 0 ? 0 : nextTilt(t, start[i], final[i])))
 
 // ── the player's moves as a short string: "c,k,r60,f" ──────────────────────
 
@@ -89,10 +92,12 @@ export function replay(day: string, moves: string): Replay {
   let seats = dailySeats()
   let dealer = seats.length - 1
   let hands = 0
+  let tilt = seats.map(() => 0)
   for (let hand = 1; hand <= DAILY_HANDS; hand++) {
     seats = topUp(seats)
     if (seats[0].stack <= 0) break
     dealer = nextDealer(dealer, seats)
+    const start = seats.map((x) => x.stack)
     let s = dealDaily(day, hand, seats, dealer)
     let guard = 0
     while (s.phase !== 'done' && guard++ < 300) {
@@ -101,9 +106,10 @@ export function replay(day: string, moves: string): Replay {
         if (!a) return { ok: false, reason: `move ${k} is missing or unreadable`, final: 0, hands }
         if (!isLegal(s, a)) return { ok: false, reason: `move ${k} isn’t allowed at that point`, final: 0, hands }
         s = act(s, a)
-      } else s = act(s, dailyBotMove(s, random, memory))
+      } else s = act(s, dailyBotMove(s, random, memory, tilt[s.toAct]))
     }
     seats = s.seats.map((x) => ({ id: x.id, name: x.name, stack: x.stack }))
+    tilt = tiltAfter(tilt, start, seats.map((x) => x.stack))
     hands = hand
   }
   if (k !== list.length) return { ok: false, reason: 'extra moves after the session ended', final: 0, hands }

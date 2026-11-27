@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { rng } from '../engine/cards.ts'
 import { act, legal, type Action } from '../engine/holdem.ts'
 import type { Memory } from '../engine/brain.ts'
-import { botRandom, DAILY_HANDS, dailyBotMove, dailySeats, dealDaily, encode, nextDealer, replay, topUp } from './daily.ts'
+import { botRandom, DAILY_HANDS, dailyBotMove, dailySeats, dealDaily, encode, nextDealer, replay, tiltAfter, topUp } from './daily.ts'
 
 /** Plays a Daily Table the way the game does, with a random (but legal) player. */
 function play(day: string, seed: string) {
@@ -13,10 +13,12 @@ function play(day: string, seed: string) {
   const moves: string[] = []
   let seats = dailySeats()
   let dealer = seats.length - 1
+  let tilt = seats.map(() => 0)
   for (let hand = 1; hand <= DAILY_HANDS; hand++) {
     seats = topUp(seats)
     if (seats[0].stack <= 0) break
     dealer = nextDealer(dealer, seats)
+    const start = seats.map((x) => x.stack)
     let s = dealDaily(day, hand, seats, dealer)
     while (s.phase !== 'done') {
       if (s.toAct === 0) {
@@ -25,9 +27,10 @@ function play(day: string, seed: string) {
         const a: Action = x < 0.2 && !l.canCheck ? { type: 'fold' } : x < 0.75 || !l.canRaise ? { type: l.canCheck ? 'check' : 'call' } : { type: 'raise', to: l.minTo }
         moves.push(encode(a))
         s = act(s, a)
-      } else s = act(s, dailyBotMove(s, random, memory))
+      } else s = act(s, dailyBotMove(s, random, memory, tilt[s.toAct]))
     }
     seats = s.seats.map((x) => ({ id: x.id, name: x.name, stack: x.stack }))
+    tilt = tiltAfter(tilt, start, seats.map((x) => x.stack))
   }
   return { moves: moves.join(','), final: seats[0].stack }
 }

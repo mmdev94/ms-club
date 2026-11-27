@@ -33,10 +33,10 @@ const pretty = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString(
 
 // ── playing today's table ─────────────────────────────────────────────────────
 
-export function DailyScreen({ name, onLeave, onBoard }: { name: string; onLeave: () => void; onBoard: () => void }) {
+export function DailyScreen({ name, face, onLeave, onBoard }: { name: string; face?: string; onLeave: () => void; onBoard: () => void }) {
   const day = useMemo(() => dayKey(), [])
   const practice = useMemo(() => playedToday(day) !== null, [day])
-  const game = useGame({ name, level: 'normal', look: lookFor(name), daily: day })
+  const game = useGame({ name, level: 'normal', look: lookFor(name), image: face, daily: day })
   const d = game.daily!
   return (
     <div className="flex h-full flex-col">

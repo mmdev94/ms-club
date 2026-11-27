@@ -62,6 +62,8 @@ export interface Decision {
   /** what it thought: for the "why did it do that?" view and tests */
   equity: number
   bluff: boolean
+  /** a short reason in words */
+  why?: string
 }
 
 export function decide(s: State, style: Style, random: () => number, iterations = 400): Decision {

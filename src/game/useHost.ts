@@ -8,6 +8,7 @@ import { CHARACTERS } from '../engine/characters'
 import { commit, deckFromSeed, randomSecret, seedFrom, type FairRecord } from '../engine/fair'
 import { legal, type State } from '../engine/holdem'
 import { maskFor, publicSeat, type Room } from '../net/room'
+import { isFace } from '../ui/Face'
 import { lookFor } from './looks'
 import { botSeats, START_STACK, useGame, type Look, type Player, type Table } from './useGame'
 
@@ -32,7 +33,9 @@ export interface FairStatus {
   record: FairRecord | null
 }
 
-export function useHost(room: Room, o: { name: string; level: Level; look: Look }): Table & { guests: Guest[]; fair: FairStatus | null } {
+export function useHost(room: Room, o: { name: string; level: Level; look: Look; image?: string }): Table & { guests: Guest[]; fair: FairStatus | null } {
+  // everyone's pictures, by player id (shared with each friend as they join)
+  const faces = useRef(new Map<string, string>(o.image ? [[room.me, o.image]] : []))
   const guests = useRef(new Map<string, Guest>())
   const [guestList, setGuestList] = useState<Guest[]>([])
   const latest = useRef<{ engine: State | null; players: Player[]; startStacks: number[]; deadline: number | null }>({ engine: null, players: [], startStacks: [], deadline: null })
@@ -98,7 +101,7 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
     level: o.level,
     look: o.look,
     autoStart: false,
-    seats: [{ id: room.me, name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look }, ...botSeats()],
+    seats: [{ id: room.me, name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look, image: o.image }, ...botSeats()],
     hooks: {
       onChange: (engine, players, startStacks, deadline) => {
         latest.current = { engine, players, startStacks, deadline }
@@ -121,7 +124,15 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
       const c = CHARACTERS.find((x) => !used.has(x.id)) ?? CHARACTERS[0]
       return { id: c.id, name: c.name, stack, character: c, kind: 'bot' }
     }
+    room.myFace.on((image, userId) => {
+      if (!isFace(image)) return
+      faces.current.set(userId, image)
+      const seat = latest.current.players.findIndex((p) => p.id === userId)
+      if (seat >= 0) tableRef.current.patchSeat(seat, { image })
+      room.faces.send({ id: userId, image })
+    })
     room.hello.on((h, peerId, userId) => {
+      for (const [id, image] of faces.current) room.faces.send({ id, image }, peerId)
       const name = (h.name || 'Friend').slice(0, 16)
       const players = latest.current.players.length ? latest.current.players : tableRef.current.players
       let g = guests.current.get(userId)
@@ -141,7 +152,7 @@ export function useHost(room: Room, o: { name: string; level: Level; look: Look 
         const seat = players.findIndex((p, i) => p.kind === 'bot' && !taken.has(i))
         g = { userId, peerId, name, seat: seat >= 0 ? seat : null, waiting: !!latest.current.engine && seat >= 0, online: true }
         guests.current.set(userId, g)
-        if (seat >= 0) tableRef.current.setSeat(seat, (old) => ({ id: userId, name, stack: old.kind === 'bot' ? START_STACK : old.stack, character: null, kind: 'remote', look: lookFor(name) }))
+        if (seat >= 0) tableRef.current.setSeat(seat, (old) => ({ id: userId, name, stack: old.kind === 'bot' ? START_STACK : old.stack, character: null, kind: 'remote', look: lookFor(name), image: faces.current.get(userId) }))
       }
       setGuestList([...guests.current.values()])
       publish()

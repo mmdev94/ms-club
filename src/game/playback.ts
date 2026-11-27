@@ -2,7 +2,7 @@
 // animate each step. Used by every kind of table: solo, host and guest.
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { Card } from '../engine/cards'
-import type { Mood } from '../engine/characters'
+import type { CueKind, Mood } from '../engine/characters'
 import type { ActKind, Event } from '../engine/holdem'
 
 export interface SeatView {
@@ -16,6 +16,10 @@ export interface SeatView {
   action: { kind: ActKind; amount: number } | null
   bubble: { text: string; id: number } | null
   mood: Mood
+  /** a tell being shown right now */
+  cue?: { kind: CueKind; id: number }
+  /** 0–1, carried from hand to hand */
+  tilt: number
   /** chips won this hand */
   won: number
   hand: string | null
@@ -40,12 +44,29 @@ export interface View {
   over: boolean
 }
 
-export type ViewAction = { type: 'event'; e: Event; stacks?: number[] } | { type: 'say'; seat: number; text: string } | { type: 'mood'; seat: number; mood: Mood } | { type: 'land'; id: number } | { type: 'banner'; text: string | null }
+export type ViewAction = { type: 'flair'; f: Flair } | { type: 'event'; e: Event; stacks?: number[] } | { type: 'say'; seat: number; text: string } | { type: 'mood'; seat: number; mood: Mood } | { type: 'land'; id: number } | { type: 'banner'; text: string | null }
 
-export const blankSeat = (stack: number): SeatView => ({ cards: [], faceUp: false, bet: 0, stack, folded: false, allIn: false, action: null, bubble: null, mood: 'calm', won: 0, hand: null })
+export const blankSeat = (stack: number, tilt = 0): SeatView => ({ cards: [], faceUp: false, bet: 0, stack, folded: false, allIn: false, action: null, bubble: null, mood: 'calm', won: 0, hand: null, tilt })
 
 let nextId = 1
 export function reduce(v: View, a: ViewAction): View {
+  if (a.type === 'flair') {
+    const f = a.f
+    return {
+      ...v,
+      seats: v.seats.map((s, i) =>
+        i !== f.seat
+          ? s
+          : {
+              ...s,
+              mood: f.mood ?? s.mood,
+              bubble: f.text ? { text: f.text, id: nextId++ } : s.bubble,
+              cue: f.cue ? { kind: f.cue, id: nextId++ } : s.cue,
+              tilt: f.tilt ?? s.tilt,
+            },
+      ),
+    }
+  }
   if (a.type === 'say') return { ...v, seats: v.seats.map((s, i) => (i === a.seat ? { ...s, bubble: { text: a.text, id: nextId++ } } : s)) }
   if (a.type === 'mood') return { ...v, seats: v.seats.map((s, i) => (i === a.seat ? { ...s, mood: a.mood } : s)) }
   if (a.type === 'land') return { ...v, flights: v.flights.filter((f) => f.id !== a.id) }
@@ -54,7 +75,7 @@ export function reduce(v: View, a: ViewAction): View {
   const seats = v.seats.map((s) => ({ ...s }))
   switch (e.type) {
     case 'hand':
-      return { hand: e.hand, dealer: e.dealer, seats: (a.stacks ?? []).map((st) => blankSeat(st)), board: [], pot: 0, flights: [], banner: null, over: false }
+      return { hand: e.hand, dealer: e.dealer, seats: (a.stacks ?? []).map((st, i) => blankSeat(st, v.seats[i]?.tilt ?? 0)), board: [], pot: 0, flights: [], banner: null, over: false }
     case 'blind': {
       const s = seats[e.seat]
       s.bet += e.amount
@@ -127,6 +148,10 @@ export interface Flair {
   seat: number
   text?: string
   mood?: Mood
+  /** a tell to play on the face */
+  cue?: CueKind
+  /** new tilt level */
+  tilt?: number
 }
 
 /** "Grandma wins 1,240 with a full house, Kings full of Fours" */

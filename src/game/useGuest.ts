@@ -9,6 +9,7 @@ import type { Action } from '../engine/holdem'
 import { BLINDS } from './useGame'
 import { rotate, rotateEvents, type HandView, type Room, type TableInfo } from '../net/room'
 import { lookFor } from './looks'
+import { isFace } from '../ui/Face'
 import { usePlayback } from './playback'
 import type { Game, Look, Player } from './useGame'
 
@@ -24,7 +25,8 @@ export interface GuestFair {
   record: FairRecord | null
 }
 
-export function useGuest(room: Room, o: { name: string; look: Look }): Game & { status: GuestStatus; info: TableInfo | null; fair: GuestFair | null } {
+export function useGuest(room: Room, o: { name: string; look: Look; image?: string }): Game & { status: GuestStatus; info: TableInfo | null; fair: GuestFair | null } {
+  const [faces, setFaces] = useState<Record<string, string>>({})
   const [info, setInfo] = useState<TableInfo | null>(null)
   const [hv, setHv] = useState<HandView | null>(null)
   const [hostGone, setHostGone] = useState(false)
@@ -35,8 +37,12 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
   const [fair, setFair] = useState<GuestFair | null>(null)
 
   useEffect(() => {
-    const hi = () => room.hello.send({ name: o.name, look: o.look })
+    const hi = () => {
+      room.hello.send({ name: o.name, look: o.look })
+      if (o.image) room.myFace.send(o.image)
+    }
     room.table.onChange((t) => setInfo(t))
+    room.faces.on((x) => isFace(x.image) && setFaces((f) => ({ ...f, [x.id]: x.image })))
     // the host sealed its secret for the next hand: add ours to the shuffle
     room.seal.on((x, peerId) => {
       hostPeer.current = peerId
@@ -56,6 +62,7 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
       (peerId) => {
         // say hello to whoever arrives: the host answers with a seat
         room.hello.send({ name: o.name, look: o.look }, peerId)
+        if (o.image) room.myFace.send(o.image)
       },
       (peerId) => {
         if (peerId === hostPeer.current) setHostGone(true)
@@ -99,11 +106,12 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
           character: s.characterId ? (byId(s.characterId) ?? null) : null,
           kind: i === (hv ? hv.seat : listed) ? ('me' as const) : s.kind === 'bot' ? ('bot' as const) : ('remote' as const),
           look: s.look ?? (s.kind !== 'bot' ? lookFor(s.name) : undefined),
+          image: faces[s.id] ?? (s.id === room.me ? o.image : undefined),
           away: s.away,
         })),
         mine,
       ),
-    [info, hv?.seat, mine, listed],
+    [info, hv?.seat, mine, listed, faces],
   )
   const events = useMemo(() => (hv ? rotateEvents(hv.events, mine, n) : []), [hv, mine, n])
   const startStacks = useMemo(() => (hv ? rotate(hv.startStacks, mine) : players.map((p) => p.stack)), [hv, mine, players])
@@ -113,8 +121,7 @@ export function useGuest(room: Room, o: { name: string; look: Look }): Game & { 
   useEffect(() => {
     room.flair.on((f) => {
       const seat = (f.seat - mineRef.current + nRef.current) % nRef.current
-      if (f.mood) dispatch({ type: 'mood', seat, mood: f.mood })
-      if (f.text) dispatch({ type: 'say', seat, text: f.text })
+      dispatch({ type: 'flair', f: { ...f, seat } })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

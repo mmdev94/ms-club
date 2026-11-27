@@ -43,13 +43,13 @@ export type Memory = Map<string, Profile>
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x))
 
-export function think(s: State, c: Character, level: Level, random: () => number, memory?: Memory, ids?: string[]): Decision {
-  if (level === 'easy') return easy(s, c, random)
+export function think(s: State, c: Character, level: Level, random: () => number, memory?: Memory, ids?: string[], tilt = 0): Decision {
+  if (level === 'easy') return easy(s, onTilt(c, tilt), random)
   const l = legal(s)
   if (!l) throw new Error('not this bot’s turn')
   const seat = l.seat
   const me = s.seats[seat]
-  const p = c.personality
+  const p = onTilt(c, tilt).personality
   const hard = level === 'hard'
   const bb = s.bb
   const hist = story(s.events)
@@ -68,7 +68,7 @@ export function think(s: State, c: Character, level: Level, random: () => number
     return { type: 'raise', to: clamp(to, l.minTo, l.maxTo) }
   }
   const passive = (): Action => ({ type: l.canCheck ? 'check' : 'fold' })
-  const result = (action: Action, equity: number, bluff = false): Decision => ({ action, equity, bluff })
+  const result = (action: Action, equity: number, bluff = false, why = ''): Decision => ({ action, equity, bluff, why: tilt >= 0.5 ? `${why} (on tilt)` : why })
 
   // ── before the flop ─────────────────────────────────────────────────────────
   if (s.phase === 'preflop') {
@@ -80,29 +80,29 @@ export function think(s: State, c: Character, level: Level, random: () => number
     // short stack: all-in or fold
     if (effective <= 12) {
       const pushTier = 2.6 + late * 2 + p.loose * 1.2 + (12 - effective) * 0.18 - raises * 0.9
-      if (t <= pushTier && l.canRaise) return result({ type: 'raise', to: l.maxTo }, eq)
-      if (raises > 0 && t <= pushTier - 0.6) return result({ type: 'call' }, eq)
-      return result(passive(), eq)
+      if (t <= pushTier && l.canRaise) return result({ type: 'raise', to: l.maxTo }, eq, false, 'short-stacked: all in with a hand worth pushing')
+      if (raises > 0 && t <= pushTier - 0.6) return result({ type: 'call' }, eq, false, 'short-stacked: calls the all-in with a strong enough hand')
+      return result(passive(), eq, false, 'short-stacked: not a hand to risk everything on')
     }
 
     if (raises === 0) {
       const openTier = 2.7 + late * 2.6 + p.loose * 1.8
-      if (t <= openTier && l.canRaise) return result(raiseTo(bb * (2.5 + limpers) + (p.aggro > 0.8 ? bb : 0)), eq)
-      if (l.canCheck) return result({ type: 'check' }, eq)
-      if (t <= openTier + 1 && p.loose > 0.6 && random() < 0.45) return result({ type: 'call' }, eq)
-      return result({ type: 'fold' }, eq)
+      if (t <= openTier && l.canRaise) return result(raiseTo(bb * (2.5 + limpers) + (p.aggro > 0.8 ? bb : 0)), eq, false, 'opens with a hand good enough for this seat')
+      if (l.canCheck) return result({ type: 'check' }, eq, false, 'a free look')
+      if (t <= openTier + 1 && p.loose > 0.6 && random() < 0.45) return result({ type: 'call' }, eq, false, 'limps in with a playable hand')
+      return result({ type: 'fold' }, eq, false, 'too weak to play from this seat')
     }
 
     // facing a raise
     const bigPrice = l.toCall / bb
     const threeBet = 1.6 + p.aggro * 1.1 + p.loose * 0.4 - (raises - 1) * 0.6
     const call = 3.1 + p.loose * 1.4 + p.sticky * 2 + late * 0.5 - (raises - 1) * 1.1 - (bigPrice > 12 ? 1 : 0) - (bigPrice > 40 ? 1 : 0)
-    if (t <= threeBet && l.canRaise) return result(raiseTo(s.currentBet * (raises >= 2 ? 2.3 : 3)), eq)
+    if (t <= threeBet && l.canRaise) return result(raiseTo(s.currentBet * (raises >= 2 ? 2.3 : 3)), eq, false, 're-raises with a premium hand')
     // a few re-raise bluffs with suited aces and connectors from late seats
     const suited = me.cards[0][1] === me.cards[1][1]
-    if (suited && t >= 3 && t <= 5 && late > 0.6 && raises === 1 && l.canRaise && random() < p.bluff * 0.22) return result(raiseTo(s.currentBet * 3), eq, true)
-    if (t <= call) return result({ type: 'call' }, eq)
-    return result(passive(), eq)
+    if (suited && t >= 3 && t <= 5 && late > 0.6 && raises === 1 && l.canRaise && random() < p.bluff * 0.22) return result(raiseTo(s.currentBet * 3), eq, true, 're-raise bluff with a suited hand from a late seat')
+    if (t <= call) return result({ type: 'call' }, eq, false, 'calls the raise with a decent hand')
+    return result(passive(), eq, false, 'folds to the raise')
   }
 
   // ── after the flop ──────────────────────────────────────────────────────────
@@ -125,23 +125,23 @@ export function think(s: State, c: Character, level: Level, random: () => number
   if (l.canCheck) {
     // value
     if (e > 0.64 - p.aggro * 0.06 && l.canRaise) {
-      if (e > 0.86 && !river && random() < p.trap * (hard ? 0.5 : 1)) return result({ type: 'check' }, e)
+      if (e > 0.86 && !river && random() < p.trap * (hard ? 0.5 : 1)) return result({ type: 'check' }, e, false, 'slow-plays a monster to trap')
       const size = (e > 0.82 ? 0.8 : 0.55) * (hard && foldy < 0.35 ? 1.3 : 1)
-      return result(raiseTo(pot * (size + jitter(0.2))), e)
+      return result(raiseTo(pot * (size + jitter(0.2))), e, false, 'bets for value with a strong hand')
     }
     // thin value against players who call too much (Hard)
-    if (hard && e > 0.52 && foldy < 0.32 && l.canRaise) return result(raiseTo(pot * 0.4), e)
+    if (hard && e > 0.52 && foldy < 0.32 && l.canRaise) return result(raiseTo(pot * 0.4), e, false, 'thin value bet: you call too much')
     // players who fold too much get bet at on every street (Hard)
-    if (hard && foldy > 0.55 && l.canRaise && random() < clamp((foldy - 0.45) * 2.2, 0, 0.92)) return result(raiseTo(pot * 0.35), e, e < 0.45)
+    if (hard && foldy > 0.55 && l.canRaise && random() < clamp((foldy - 0.45) * 2.2, 0, 0.92)) return result(raiseTo(pot * 0.35), e, e < 0.45, 'bets because you fold too often')
     // continuation bet as the pre-flop raiser
     if (aggressor && s.phase === 'flop' && opponents.length <= 2 && l.canRaise && random() < (0.5 + p.aggro * 0.3) * (hard ? clamp(foldy / 0.45, 0.5, 1.4) : 1))
-      return result(raiseTo(pot * 0.4), e, e < 0.45)
+      return result(raiseTo(pot * 0.4), e, e < 0.45, 'continuation bet as the pre-flop raiser')
     // semi-bluff with a draw
-    if (d > 0 && !river && l.canRaise && random() < 0.3 + p.aggro * 0.4) return result(raiseTo(pot * 0.6), e, true)
+    if (d > 0 && !river && l.canRaise && random() < 0.3 + p.aggro * 0.4) return result(raiseTo(pot * 0.6), e, true, 'semi-bluffs with a draw')
     // river bluff with nothing, more often against players who fold
     if (river && e < 0.25 && l.canRaise && opponents.length <= 2 && random() < p.bluff * (hard ? clamp(foldy / 0.45, 0.3, 2) : 1) * 0.6)
-      return result(raiseTo(pot * 0.7), e, true)
-    return result({ type: 'check' }, e)
+      return result(raiseTo(pot * 0.7), e, true, 'river bluff with nothing')
+    return result({ type: 'check' }, e, false, 'checks: not strong enough to bet')
   }
 
   // facing a bet
@@ -150,13 +150,13 @@ export function think(s: State, c: Character, level: Level, random: () => number
   if (!river) need -= d * 0.1 // a draw has more to come
   if (hard) need *= wild > 0.6 ? 0.85 : wild < 0.35 ? 1.12 : 1 // pay off bluffers, respect quiet players
   if (e > 0.8 - p.aggro * 0.08 && l.canRaise) {
-    if (river && e > 0.92 && random() < 0.4) return result({ type: 'raise', to: l.maxTo }, e)
-    return result(raiseTo(s.currentBet * 2.6 + pot * 0.3), e)
+    if (river && e > 0.92 && random() < 0.4) return result({ type: 'raise', to: l.maxTo }, e, false, 'shoves the river with a near-certain winner')
+    return result(raiseTo(s.currentBet * 2.6 + pot * 0.3), e, false, 'raises for value')
   }
-  if (d >= 0.26 && s.phase === 'flop' && l.canRaise && random() < p.aggro * 0.22) return result(raiseTo(s.currentBet * 2.8), e, true)
-  if (e >= need) return result({ type: 'call' }, e)
-  if (l.canRaise && random() < p.bluff * 0.04) return result(raiseTo(s.currentBet * 3), e, true)
-  return result({ type: 'fold' }, e)
+  if (d >= 0.26 && s.phase === 'flop' && l.canRaise && random() < p.aggro * 0.22) return result(raiseTo(s.currentBet * 2.8), e, true, 'semi-bluff raise with a draw')
+  if (e >= need) return result({ type: 'call' }, e, false, 'calls: the price is right for its chances')
+  if (l.canRaise && random() < p.bluff * 0.04) return result(raiseTo(s.currentBet * 3), e, true, 'bluff-raises')
+  return result({ type: 'fold' }, e, false, 'folds: not enough chance to win for the price')
 }
 
 function lastPreflopRaiser(h: Seen[]): number {
@@ -164,9 +164,32 @@ function lastPreflopRaiser(h: Seen[]): number {
   return -1
 }
 
+/** A character on tilt plays looser, wilder and bluffs more (t from 0 to 1). Plain arithmetic only, so replays match in every browser. */
+export function onTilt(c: Character, t: number): Character {
+  if (t <= 0) return c
+  const p = c.personality
+  const st = c.style
+  return {
+    ...c,
+    personality: { loose: p.loose + t * 1.3, aggro: Math.min(1, p.aggro + t * 0.4), bluff: Math.min(0.8, p.bluff + t * 0.35), sticky: Math.min(0.45, p.sticky + t * 0.2), shove: Math.min(0.6, p.shove + t * 0.15), trap: p.trap * (1 - t) },
+    style: { ...st, play: st.play * (1 - t * 0.3), raise: st.raise * (1 - t * 0.2), bluff: Math.min(0.8, st.bluff + t * 0.3), sticky: Math.min(0.45, st.sticky + t * 0.2), shove: Math.min(0.6, st.shove + t * 0.15) },
+  }
+}
+
+/** After a hand: a big loss puts a player on tilt, a big win calms them, otherwise it fades. Returns the new value. */
+export function nextTilt(t: number, start: number, final: number): number {
+  if (start <= 0) return t
+  const lost = (start - final) / start
+  let v: number
+  if (lost >= 0.35) v = Math.min(1, t + 0.25 + lost * 0.6)
+  else if (-lost > 0.3) v = Math.max(0, t - 0.35)
+  else v = t * 0.7
+  return Math.round(v * 1000) / 1000
+}
+
 /** Easy: the original bot, with the occasional plain mistake. */
 function easy(s: State, c: Character, random: () => number): Decision {
-  const d = easyDecide(s, c.style, random, 200)
+  const d: Decision = { ...easyDecide(s, c.style, random, 200), why: 'plays by feel' }
   const l = legal(s)!
   const r = random()
   if (d.action.type === 'fold' && !l.canCheck && r < 0.18) return { ...d, action: { type: 'call' } } // curious call

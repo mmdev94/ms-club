@@ -2,9 +2,9 @@
 // Seats are you, a bot, or (when you host an online table) a friend whose
 // moves arrive over the network. Bots "think" for a moment before acting.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { learn, think, type Level, type Memory } from '../engine/brain'
+import { learn, nextTilt, think, type Level, type Memory } from '../engine/brain'
 import { rng, type Card } from '../engine/cards'
-import { CHARACTERS, line, type Character } from '../engine/characters'
+import { CHARACTERS, line, type Character, type CueKind } from '../engine/characters'
 import { shortName } from '../engine/hand'
 import { act, legal, startHand, type Action, type Legal, type State } from '../engine/holdem'
 import { moodFor, usePlayback, type Flair, type View } from './playback'
@@ -30,8 +30,39 @@ export interface Player {
   kind: SeatKind
   /** face for humans */
   look?: Look
+  /** their own picture or GIF (data URL) */
+  image?: string
   /** a friend who disconnected: their turns are skipped */
   away?: boolean
+}
+
+/** What a regular was thinking when it acted (for Mind-read). */
+export interface Thought {
+  hand: number
+  seat: number
+  street: State['phase']
+  kind: string
+  to: number
+  equity: number
+  why: string
+}
+
+/** How often a tell shows when it's true, and how often it shows when it isn't, by level. */
+const TELL_RATE: Record<Level, { honest: number; fake: number }> = {
+  easy: { honest: 1.15, fake: 0.03 },
+  normal: { honest: 1, fake: 0.08 },
+  hard: { honest: 0.65, fake: 0.16 },
+}
+
+/** Does this move trigger the character's tell? (cosmetic: uses Math.random, never the game's seed) */
+export function tellFor(c: Character, level: Level, kind: string, equity: number, bluff: boolean): CueKind | null {
+  const t = c.tell
+  const aggressive = kind === 'bet' || kind === 'raise' || kind === 'allin'
+  const truth =
+    t.when === 'bluff' ? aggressive && (bluff || equity < 0.35) : t.when === 'strong' ? (aggressive || kind === 'call') && equity > 0.68 : (kind === 'call' || kind === 'check') && equity < 0.4
+  const r = TELL_RATE[level]
+  if (truth) return Math.random() < Math.min(0.97, t.honest * r.honest) ? t.cue : null
+  return kind !== 'fold' && Math.random() < r.fake ? t.cue : null
 }
 
 export interface Game {
@@ -52,6 +83,14 @@ export interface Game {
   /** when the seat that's thinking must act by (friends only), ms since epoch */
   deadline: number | null
   land: (id: number) => void
+  /** what the regulars thought this hand (solo and host tables) */
+  thoughts?: Thought[]
+  /** the hand as the engine sees it (solo and host tables), for Mind-read and replays */
+  engine?: State | null
+  /** how good the regulars are at this table */
+  level?: Level
+  /** keep the next hand from being dealt (while looking back at this one) */
+  hold?: (on: boolean) => void
 }
 
 export interface HostHooks {
@@ -102,13 +141,15 @@ export function useGame(o: {
   hooks?: HostHooks
   autoStart?: boolean
   look?: Look
+  /** the player's own picture */
+  image?: string
   /** produce the deck for a hand before it's dealt (the fair shuffle at friends' tables) */
   prepare?: (hand: number, players: Player[]) => Promise<Card[]>
   /** play today's Daily Table ("2026-11-27"): fixed cards, seeded bots, 20 hands, moves recorded */
   daily?: string
 }): Table & { daily: DailyState | null } {
   const random = useRef(rng(o.seed ?? `${Date.now()}:${Math.random()}`)).current
-  const [players, setPlayers] = useState<Player[]>(() => o.seats ?? [{ id: 'you', name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look }, ...botSeats()])
+  const [players, setPlayers] = useState<Player[]>(() => o.seats ?? [{ id: 'you', name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look, image: o.image }, ...botSeats()])
   const [engine, setEngine] = useState<State | null>(null)
   const [started, setStarted] = useState(o.autoStart ?? true)
   const [fast, setFast] = useState(false)
@@ -122,6 +163,10 @@ export function useGame(o: {
   const [dailyOver, setDailyOver] = useState(false)
   const bluffs = useRef(new Set<number>())
   const memory = useRef<Memory>(new Map())
+  const tilts = useRef(new Map<string, number>())
+  const [ready, setReady] = useState<Player[] | null>(null)
+  const [held, setHeld] = useState(false)
+  const [thoughts, setThoughts] = useState<Thought[]>([])
   const pending = useRef(new Map<number, Player | ((old: Player) => Player)>())
   const hooks = useRef(o.hooks)
   hooks.current = o.hooks
@@ -133,8 +178,7 @@ export function useGame(o: {
 
   const flair = useCallback(
     (f: Flair) => {
-      if (f.mood) dispatch({ type: 'mood', seat: f.seat, mood: f.mood })
-      if (f.text) dispatch({ type: 'say', seat: f.seat, text: f.text })
+      dispatch({ type: 'flair', f })
       hooks.current?.onFlair?.(f)
     },
     [dispatch],
@@ -177,6 +221,7 @@ export function useGame(o: {
           { hand, dealer: dealer.current, sb: BLINDS[0], bb: BLINDS[1], deck, seed: o.daily ? dailySeed(o.daily, hand) : `${o.seed ?? 'free'}:${hand}:${random()}` },
         )
         setPlayers(ps)
+        setThoughts([])
         setEngine(s)
       }
       if (prepare.current) prepare.current(hand, ps).then(go, () => go())
@@ -197,19 +242,36 @@ export function useGame(o: {
   useEffect(() => {
     if (!caughtUp || !engine || engine.phase !== 'done') return
     learn(memory.current, players.map((p) => p.id), engine.events)
+    // tilt: a big loss sets a regular off, a big win calms them down
+    players.forEach((p, i) => {
+      if (p.kind !== 'bot') return
+      const before = tilts.current.get(p.id) ?? 0
+      const after = nextTilt(before, startStacks.current[i], engine.seats[i].stack)
+      tilts.current.set(p.id, after)
+      if (Math.abs(after - before) < 0.02) return
+      const blowUp = before < 0.5 && after >= 0.5
+      flair({ seat: i, tilt: after, mood: blowUp ? 'angry' : undefined, text: blowUp && p.character ? (line(p.character, 'tilt', random) ?? undefined) : undefined })
+    })
     const next = players.map((p, i) => ({ ...p, stack: engine.seats[i].stack }))
     setPlayers(next)
     if (o.daily && (engine.hand >= DAILY_HANDS || next[0].stack <= 0)) {
       setDailyOver(true)
       return
     }
-    const t = setTimeout(() => {
-      if (next.findIndex((p) => p.kind === 'me') >= 0 && next.find((p) => p.kind === 'me')!.stack <= 0) return // you decide (rebuy)
-      deal(next)
-    }, fast ? 1600 : 3400)
-    return () => clearTimeout(t)
+    if (next.findIndex((p) => p.kind === 'me') >= 0 && next.find((p) => p.kind === 'me')!.stack <= 0) return // you decide (rebuy)
+    setReady(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caughtUp, engine])
+
+  // deal the next hand after a pause — unless someone is looking at the last one (Mind-read)
+  useEffect(() => {
+    if (!ready || held) return
+    const t = setTimeout(() => {
+      setReady(null)
+      deal(ready)
+    }, fast ? 1600 : 3400)
+    return () => clearTimeout(t)
+  }, [ready, held, fast, deal])
 
   // bots act; friends get a deadline
   useEffect(() => {
@@ -233,7 +295,8 @@ export function useGame(o: {
     const c = p.character!
     const t = setTimeout(
       () => {
-        const d = think(engine, c, o.daily ? 'normal' : o.level, botRand, memory.current, players.map((x) => x.id))
+        const level = o.daily ? 'normal' : o.level
+        const d = think(engine, c, level, botRand, memory.current, players.map((x) => x.id), tilts.current.get(p.id) ?? 0)
         const next = act(engine, d.action)
         const last = next.events.findLast((x) => x.type === 'act')
         if (last?.type === 'act') {
@@ -241,7 +304,9 @@ export function useGame(o: {
           const moment = last.kind === 'bet' ? 'raise' : last.kind
           const said = random() < (last.kind === 'allin' ? 0.9 : last.kind === 'fold' ? 0.25 : 0.45) ? line(c, moment, random) : null
           const mood = moodFor(last.kind, d.bluff)
-          if (mood || said) flair({ seat, mood: mood ?? undefined, text: said ?? undefined })
+          const cue = tellFor(c, level, last.kind, d.equity, d.bluff)
+          if (mood || said || cue) flair({ seat, mood: mood ?? undefined, text: said ?? undefined, cue: cue ?? undefined })
+          setThoughts((t) => [...t, { hand: engine.hand, seat, street: engine.phase, kind: last.kind, to: last.to, equity: d.equity, why: d.why ?? '' }])
         }
         setThinking(-1)
         setEngine(next)
@@ -315,5 +380,5 @@ export function useGame(o: {
   const daily: DailyState | null = o.daily
     ? { day: o.daily, played: engine?.phase === 'done' ? engine.hand : Math.max(0, (engine?.hand ?? 1) - 1), over: dailyOver, moves: moves.current.join(','), final: players[0].stack }
     : null
-  return { view, players, myTurn, myHand, play, rebuy, canRebuy: !o.daily, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat, daily }
+  return { hold: setHeld, level: o.daily ? 'normal' : o.level, thoughts, view, players, myTurn, myHand, play, rebuy, canRebuy: !o.daily, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat, daily }
 }

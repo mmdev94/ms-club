@@ -4,6 +4,7 @@ import { LEVELS, type Level } from '../engine/brain'
 import { CHARACTERS } from '../engine/characters'
 import { Avatar } from './Avatar'
 import { playedToday } from './Daily'
+import { FacePicker } from './Face'
 import { PlayingCard } from './Card'
 
 /** "Delivered by a miner": this page reads its own answer from ms.computer. */
@@ -20,7 +21,7 @@ function useServedBy() {
 
 const FAN = ['As', 'Kh', 'Qd', 'Jc', 'Ts']
 
-export function Lobby({ name, setName, level, setLevel, onPlay, onHost, onDaily, onBoard }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void; onDaily: () => void; onBoard: () => void }) {
+export function Lobby({ face, setFace, name, setName, level, setLevel, onPlay, onHost, onDaily, onBoard }: { face?: string; setFace: (f: string | undefined) => void; name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void; onDaily: () => void; onBoard: () => void }) {
   const servedBy = useServedBy()
   const played = playedToday()
   return (
@@ -49,6 +50,7 @@ export function Lobby({ name, setName, level, setLevel, onPlay, onHost, onDaily,
             onChange={(e) => setName(e.target.value)}
             className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-lg text-cream outline-none focus:border-gold"
           />
+          <FacePicker name={name} face={face} setFace={setFace} />
           <p className="mt-2 text-left text-[13px] font-semibold uppercase tracking-[0.14em] text-cream/50">How good are the regulars?</p>
           <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Difficulty">
             {LEVELS.map((x, i) => (
@@ -90,6 +92,7 @@ export function Lobby({ name, setName, level, setLevel, onPlay, onHost, onDaily,
         </div>
 
         <h2 className="mt-16 font-display text-3xl text-cream">Meet the regulars</h2>
+        <p className="mt-2 max-w-[56ch] text-[15px] text-cream/60">Each one has a tell — a little habit that gives their hand away. Learn it and you win more. And watch their faces: after a bad beat they go on tilt and play wild.</p>
         <div className="mt-6 grid w-full grid-cols-2 gap-4 lg:grid-cols-4">
           {CHARACTERS.map((c, i) => (
             <motion.div
@@ -103,6 +106,9 @@ export function Lobby({ name, setName, level, setLevel, onPlay, onHost, onDaily,
               <p className="mt-4 font-display text-2xl text-cream">{c.name}</p>
               <p className="mt-1 text-[14px] leading-snug text-cream/60">{c.tagline}</p>
               <p className="mt-3 rounded-full bg-black/40 px-3 py-1 text-[13px] italic text-gold/90">“{c.lines.win?.[0] ?? c.lines.raise?.[0]}”</p>
+              <p className="mt-3 text-[12.5px] leading-snug text-cream/50">
+                <span className="font-semibold text-cream/70">Tell:</span> {c.tell.hint}
+              </p>
             </motion.div>
           ))}
         </div>

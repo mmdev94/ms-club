@@ -8,6 +8,7 @@ import type { Game } from '../game/useGame'
 import { openRoom, type Room } from '../net/room'
 import { Avatar } from './Avatar'
 import { Controls } from './Controls'
+import { FacePicker } from './Face'
 import { Table } from './Table'
 
 export const inviteLink = (roomId: string) => `${location.origin}${location.pathname}#/t/${encodeURIComponent(roomId)}`
@@ -139,15 +140,15 @@ function Overlay({ children }: { children: ReactNode }) {
 
 // ── hosting ───────────────────────────────────────────────────────────────────
 
-export function HostScreen({ name, level, onLeave }: { name: string; level: Level; onLeave: () => void }) {
+export function HostScreen({ name, level, face, onLeave }: { name: string; level: Level; face?: string; onLeave: () => void }) {
   const { room, error } = useRoom({ host: true })
   if (error) return <Message title="Couldn’t open a table" text={error} onLeave={onLeave} />
   if (!room) return <Message title="Opening your table…" text="Setting up a private room. No server involved — your browser is the table." onLeave={onLeave} />
-  return <HostTable room={room} name={name} level={level} onLeave={onLeave} />
+  return <HostTable room={room} name={name} level={level} face={face} onLeave={onLeave} />
 }
 
-function HostTable({ room, name, level, onLeave }: { room: Room; name: string; level: Level; onLeave: () => void }) {
-  const t = useHost(room, { name, level, look: lookFor(name) })
+function HostTable({ room, name, level, face, onLeave }: { room: Room; name: string; level: Level; face?: string; onLeave: () => void }) {
+  const t = useHost(room, { name, level, look: lookFor(name), image: face })
   const link = inviteLink(room.roomId)
   const friends = t.guests.filter((g) => g.online)
   return (
@@ -177,7 +178,7 @@ function HostTable({ room, name, level, onLeave }: { room: Room; name: string; l
           <ul className="mt-5 space-y-2 text-left">
             {t.players.map((p, i) => (
               <li key={i} className="flex items-center gap-3 rounded-xl bg-white/[.04] px-3 py-2">
-                <Avatar look={p.character?.look ?? p.look ?? lookFor(p.name)} mood="calm" size={34} />
+                <Avatar look={p.character?.look ?? p.look ?? lookFor(p.name)} mood="calm" size={34} image={p.image} animated={false} />
                 <span className="flex-1 font-semibold text-cream">{p.name}</span>
                 <span className="text-[13px] text-cream/50">{p.kind === 'me' ? 'you · host' : p.kind === 'bot' ? 'bot' : 'friend ✓'}</span>
               </li>
@@ -195,7 +196,7 @@ function HostTable({ room, name, level, onLeave }: { room: Room; name: string; l
 
 // ── joining ───────────────────────────────────────────────────────────────────
 
-export function GuestScreen({ roomId, name, setName, onLeave }: { roomId: string; name: string; setName: (n: string) => void; onLeave: () => void }) {
+export function GuestScreen({ roomId, name, setName, face, setFace, onLeave }: { roomId: string; name: string; setName: (n: string) => void; face?: string; setFace: (f: string | undefined) => void; onLeave: () => void }) {
   const [ready, setReady] = useState(false)
   if (!ready)
     return (
@@ -205,13 +206,14 @@ export function GuestScreen({ roomId, name, setName, onLeave }: { roomId: string
             MS <span className="text-gold">Club</span>
           </p>
           <p className="mt-3 text-cream/70">A friend invited you to their poker table. Play chips only.</p>
-          <div className="mt-6 flex justify-center">
-            <Avatar look={lookFor(name)} mood="happy" size={88} />
-          </div>
+
           <label className="mt-5 block text-left text-[13px] font-semibold uppercase tracking-[0.14em] text-cream/50" htmlFor="gname">
             Your name at the table
           </label>
           <input id="gname" value={name} maxLength={16} onChange={(e) => setName(e.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-lg text-cream outline-none focus:border-gold" />
+          <div className="mt-3">
+            <FacePicker name={name} face={face} setFace={setFace} />
+          </div>
           <button onClick={() => setReady(true)} disabled={!name.trim()} className="btn-gold mt-4 w-full py-3.5 text-lg disabled:opacity-50">
             Join the table
           </button>
@@ -219,18 +221,18 @@ export function GuestScreen({ roomId, name, setName, onLeave }: { roomId: string
         </div>
       </div>
     )
-  return <GuestRoom roomId={roomId} name={name.trim()} onLeave={onLeave} />
+  return <GuestRoom roomId={roomId} name={name.trim()} face={face} onLeave={onLeave} />
 }
 
-function GuestRoom({ roomId, name, onLeave }: { roomId: string; name: string; onLeave: () => void }) {
+function GuestRoom({ roomId, name, face, onLeave }: { roomId: string; name: string; face?: string; onLeave: () => void }) {
   const { room, error } = useRoom({ host: false, roomId })
   if (error) return <Message title="Couldn’t reach the table" text={error} onLeave={onLeave} />
   if (!room) return <Message title="Finding the table…" text="Connecting straight to your friend’s browser." onLeave={onLeave} />
-  return <GuestTable room={room} name={name} onLeave={onLeave} />
+  return <GuestTable room={room} name={name} face={face} onLeave={onLeave} />
 }
 
-function GuestTable({ room, name, onLeave }: { room: Room; name: string; onLeave: () => void }) {
-  const g = useGuest(room, { name, look: lookFor(name) })
+function GuestTable({ room, name, face, onLeave }: { room: Room; name: string; face?: string; onLeave: () => void }) {
+  const g = useGuest(room, { name, look: lookFor(name), image: face })
   const host = g.info?.seats.find((s) => s.kind === 'host')?.name
   const [slow, setSlow] = useState(false)
   useEffect(() => {

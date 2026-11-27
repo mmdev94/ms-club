@@ -5,6 +5,7 @@ import { useGame } from './game/useGame'
 import { Controls } from './ui/Controls'
 import { Board, DailyScreen } from './ui/Daily'
 import { OgCard } from './ui/Og'
+import { loadFace } from './ui/Face'
 import { Lobby } from './ui/Lobby'
 import { GuestScreen, HostScreen } from './ui/Online'
 import { Table } from './ui/Table'
@@ -36,8 +37,8 @@ const fromHash = (): Screen => {
   return { at: 'lobby' }
 }
 
-function Solo({ name, level, onLeave }: { name: string; level: Level; onLeave: () => void }) {
-  const game = useGame({ name, level, look: lookFor(name) })
+function Solo({ name, level, face, onLeave }: { name: string; level: Level; face?: string; onLeave: () => void }) {
+  const game = useGame({ name, level, look: lookFor(name), image: face })
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between px-4 py-2.5">
@@ -59,6 +60,7 @@ export default function App() {
   const [name, setNameState] = useState(() => load('msclub-name', 'You'))
   const [level, setLevelState] = useState<Level>(() => (['easy', 'normal', 'hard'].includes(load('msclub-level', '')) ? (load('msclub-level', 'normal') as Level) : 'normal'))
   const [screen, setScreen] = useState<Screen>(fromHash)
+  const [face, setFace] = useState<string | undefined>(loadFace)
   const setName = (n: string) => {
     setNameState(n)
     save('msclub-name', n)
@@ -83,15 +85,15 @@ export default function App() {
   }
   return (
     <div className="h-full">
-      {screen.at === 'solo' && <Solo name={who} level={level} onLeave={toLobby} />}
-      {screen.at === 'host' && <HostScreen name={who} level={level} onLeave={toLobby} />}
-      {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} onLeave={toLobby} />}
+      {screen.at === 'solo' && <Solo name={who} level={level} face={face} onLeave={toLobby} />}
+      {screen.at === 'host' && <HostScreen name={who} level={level} face={face} onLeave={toLobby} />}
+      {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} face={face} setFace={setFace} onLeave={toLobby} />}
       {screen.at === 'og' && <OgCard />}
-      {screen.at === 'daily' && <DailyScreen name={who} onLeave={toLobby} onBoard={() => go('board')} />}
+      {screen.at === 'daily' && <DailyScreen name={who} face={face} onLeave={toLobby} onBoard={() => go('board')} />}
       {screen.at === 'board' && <Board onLeave={toLobby} onPlay={() => go('daily')} start={screen.day} />}
       {screen.at === 'lobby' && (
         <div className="h-full overflow-y-auto">
-          <Lobby name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} onDaily={() => go('daily')} onBoard={() => go('board')} />
+          <Lobby face={face} setFace={setFace} name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} onDaily={() => go('daily')} onBoard={() => go('board')} />
         </div>
       )}
     </div>

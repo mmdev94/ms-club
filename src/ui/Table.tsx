@@ -6,6 +6,7 @@ import { Avatar, PLAYER_LOOK } from './Avatar'
 import { CardBack, PlayingCard } from './Card'
 import { ChipStack, FlyingChips, money } from './Chips'
 import { boardX, TALL, WIDE, type Layout, type Pt } from './layout'
+import { MindRead } from './MindRead'
 
 function useBox() {
   const ref = useRef<HTMLDivElement>(null)
@@ -112,7 +113,7 @@ function placeFor(at: Pt, L: Layout): Place {
   return 'above'
 }
 
-function Seat({ at, s, name, me, thinking, dealer, place, look, over }: { at: Pt; s: SeatView; name: string; me: boolean; thinking: boolean; dealer: boolean; place: Place; look: Parameters<typeof Avatar>[0]['look']; over: boolean }) {
+function Seat({ at, s, name, me, thinking, dealer, place, look, over, image, onMind }: { at: Pt; s: SeatView; name: string; me: boolean; thinking: boolean; dealer: boolean; place: Place; look: Parameters<typeof Avatar>[0]['look']; over: boolean; image?: string; onMind?: () => void }) {
   const size = me ? 86 : 78
   const winner = s.won > 0
   return (
@@ -120,7 +121,7 @@ function Seat({ at, s, name, me, thinking, dealer, place, look, over }: { at: Pt
       <div className="relative">
         {thinking && <span className="absolute -inset-2 animate-ping rounded-full border-4 border-gold/70" />}
         <motion.div animate={{ scale: winner ? [1, 1.12, 1] : 1, opacity: s.folded ? 0.55 : 1 }} transition={{ duration: 0.6 }}>
-          <Avatar look={look} mood={s.mood} size={size} ring={winner ? '#e8c36a' : thinking ? '#fff' : 'rgba(232,195,106,.55)'} />
+          <Avatar look={look} mood={s.mood} size={size} ring={winner ? '#e8c36a' : thinking ? '#fff' : 'rgba(232,195,106,.55)'} cue={s.cue} tilt={s.tilt} image={image} />
         </motion.div>
         {dealer && (
           <span className="absolute -right-2 -top-1 grid h-7 w-7 place-items-center rounded-full border-2 border-ink/20 bg-white font-display text-[15px] text-ink shadow-lg" title="Dealer">
@@ -147,6 +148,18 @@ function Seat({ at, s, name, me, thinking, dealer, place, look, over }: { at: Pt
         <p className="truncate text-[14px] font-semibold text-cream">{name}</p>
         <p className="font-mono text-[14px] text-gold">{s.allIn && !s.folded && s.stack === 0 && !over ? 'ALL IN' : money(s.stack)}</p>
       </div>
+      {onMind && (
+        <motion.button
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          onClick={onMind}
+          title={`Mind-read: what ${name} was thinking`}
+          aria-label={`Mind-read ${name}`}
+          className="pointer-events-auto mt-1.5 rounded-full border border-gold/60 bg-black/70 px-2.5 py-0.5 text-[12.5px] font-semibold text-gold hover:bg-gold/15"
+        >
+          🧠 Mind-read
+        </motion.button>
+      )}
       {s.hand && (
         <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className={`mt-1.5 rounded-full px-2.5 py-0.5 text-[12.5px] font-semibold ${winner ? 'bg-gold text-ink' : 'bg-black/60 text-cream/80'}`}>
           {s.hand}
@@ -166,6 +179,12 @@ export function Table({ game }: { game: Game }) {
   const L = size.w / Math.max(1, size.h) > 1.05 ? WIDE : TALL
   const scale = Math.min(size.w / L.w, size.h / L.h) || 0
   const { view, players, thinking } = game
+  const [mind, setMindState] = useState<{ seat: number; engine: NonNullable<Game['engine']>; thoughts: NonNullable<Game['thoughts']> } | null>(null)
+  const setMind = (seat: number | null) => {
+    game.hold?.(seat !== null)
+    setMindState(seat === null || !game.engine ? null : { seat, engine: game.engine, thoughts: game.thoughts ?? [] })
+  }
+  const canMind = !!game.engine && game.engine.phase === 'done' && view.over && !!game.thoughts && game.engine.hand === view.hand
   const pt = (f: { kind: 'seat' | 'bet' | 'pot'; seat?: number }): Pt => (f.kind === 'pot' ? L.pot : f.kind === 'bet' ? L.bets[f.seat!] : L.seats[f.seat!])
 
   return (
@@ -240,6 +259,8 @@ export function Table({ game }: { game: Game }) {
               place={placeFor(L.seats[i], L)}
               over={view.over}
               look={players[i]?.character?.look ?? players[i]?.look ?? PLAYER_LOOK}
+              image={players[i]?.image}
+              onMind={canMind && players[i]?.kind === 'bot' ? () => setMind(i) : undefined}
             />
           ))}
 
@@ -259,6 +280,7 @@ export function Table({ game }: { game: Game }) {
           </AnimatePresence>
         </div>
       )}
+      {mind && <MindRead engine={mind.engine} seat={mind.seat} players={players} thoughts={mind.thoughts} level={game.level ?? 'normal'} onClose={() => setMind(null)} />}
     </div>
   )
 }
