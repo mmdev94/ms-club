@@ -168,7 +168,7 @@ export function bannerFor(e: Extract<Event, { type: 'award' }>, events: Event[],
  * A new `hand` number starts again from the first event.
  */
 export function usePlayback(p: { hand: number; events: Event[]; startStacks: number[]; names: string[]; fast: boolean; onEvent?: (e: Event) => void }) {
-  const [view, dispatch] = useReducer(reduce, undefined, (): View => ({ hand: 0, dealer: 0, seats: p.startStacks.map(blankSeat), board: [], pot: 0, flights: [], banner: null, over: false }))
+  const [view, dispatch] = useReducer(reduce, undefined, (): View => ({ hand: 0, dealer: 0, seats: p.startStacks.map((st) => blankSeat(st)), board: [], pot: 0, flights: [], banner: null, over: false }))
   const [pos, setPos] = useState({ hand: p.hand, cursor: 0 })
   const cursor = pos.hand === p.hand ? pos.cursor : 0
   const latest = useRef(p)

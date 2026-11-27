@@ -11,6 +11,7 @@ import { rotate, rotateEvents, type HandView, type Room, type TableInfo } from '
 import { lookFor } from './looks'
 import { isFace } from '../ui/Face'
 import { usePlayback } from './playback'
+import type { ReplayData } from './replay'
 import type { Game, Look, Player } from './useGame'
 
 export type GuestStatus = 'connecting' | 'waiting' | 'watching' | 'playing' | 'host-left'
@@ -147,7 +148,13 @@ export function useGuest(room: Room, o: { name: string; look: Look; image?: stri
   const status: GuestStatus = hostGone ? 'host-left' : !info || !hv ? (info && !info.started ? 'waiting' : 'connecting') : hv.seat < 0 ? 'watching' : 'playing'
   const thinking = hv && hv.thinking >= 0 && !caughtUp ? -1 : hv ? (hv.thinking - mine + n) % n : -1
 
+  const shareable = (): ReplayData | null =>
+    hv && hv.events.some((e) => e.type === 'end') && hv.seat >= 0
+      ? { v: 1, names: players.map((p) => p.name), chars: players.map((p) => p.character?.id ?? null), stacks: startStacks, events, by: o.name }
+      : null
+
   return {
+    shareable,
     view,
     players: players.length ? players : [],
     myTurn,

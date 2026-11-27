@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import type { Game } from '../game/useGame'
 import { money } from './Chips'
+import { ShareHand } from './Replay'
 
 export function Controls({ game }: { game: Game }) {
   const { myTurn: l, view, myHand, players } = game
@@ -29,10 +30,13 @@ export function Controls({ game }: { game: Game }) {
           {myHand ? <span className="mr-3 rounded-full bg-gold/15 px-3 py-1 font-semibold text-gold">{myHand}</span> : null}
           {view.seats[0]?.folded ? 'You folded — watch the others fight it out.' : game.thinking > 0 && players[game.thinking] ? <Waiting name={players[game.thinking].name} deadline={game.deadline} /> : view.over ? 'Next hand coming up…' : ' '}
         </p>
-        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-cream/60">
-          <input type="checkbox" checked={game.fast} onChange={(e) => game.setFast(e.target.checked)} className="accent-[#e8c36a]" />
-          Fast
-        </label>
+        <div className="flex items-center gap-4">
+          {view.over && <ShareHand game={game} />}
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-cream/60">
+            <input type="checkbox" checked={game.fast} onChange={(e) => game.setFast(e.target.checked)} className="accent-[#e8c36a]" />
+            Fast
+          </label>
+        </div>
       </Panel>
     )
 

@@ -5,6 +5,7 @@ import { useGame } from './game/useGame'
 import { Controls } from './ui/Controls'
 import { Board, DailyScreen } from './ui/Daily'
 import { OgCard } from './ui/Og'
+import { ReplayScreen } from './ui/Replay'
 import { loadFace } from './ui/Face'
 import { Lobby } from './ui/Lobby'
 import { GuestScreen, HostScreen } from './ui/Online'
@@ -25,13 +26,15 @@ const save = (k: string, v: string) => {
   }
 }
 
-type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string } | { at: 'og' }
+type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string } | { at: 'og' } | { at: 'replay'; code: string }
 
 const fromHash = (): Screen => {
   const m = /^#\/t\/(.+)$/.exec(location.hash)
   if (m) return { at: 'join', roomId: decodeURIComponent(m[1]) }
   if (location.hash === '#/daily') return { at: 'daily' }
   if (location.hash === '#/og') return { at: 'og' }
+  const r = /^#\/r\/([A-Za-z0-9_-]+)$/.exec(location.hash)
+  if (r) return { at: 'replay', code: r[1] }
   const b = /^#\/board(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(location.hash)
   if (b) return { at: 'board', day: b[1] }
   return { at: 'lobby' }
@@ -89,6 +92,7 @@ export default function App() {
       {screen.at === 'host' && <HostScreen name={who} level={level} face={face} onLeave={toLobby} />}
       {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} face={face} setFace={setFace} onLeave={toLobby} />}
       {screen.at === 'og' && <OgCard />}
+      {screen.at === 'replay' && <ReplayScreen code={screen.code} onLeave={toLobby} />}
       {screen.at === 'daily' && <DailyScreen name={who} face={face} onLeave={toLobby} onBoard={() => go('board')} />}
       {screen.at === 'board' && <Board onLeave={toLobby} onPlay={() => go('daily')} start={screen.day} />}
       {screen.at === 'lobby' && (

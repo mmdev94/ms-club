@@ -8,6 +8,8 @@ import { CHARACTERS, line, type Character, type CueKind } from '../engine/charac
 import { shortName } from '../engine/hand'
 import { act, legal, startHand, type Action, type Legal, type State } from '../engine/holdem'
 import { moodFor, usePlayback, type Flair, type View } from './playback'
+import { maskFor } from '../net/room'
+import type { ReplayData } from './replay'
 import { botRandom, DAILY_HANDS, dailySeed, encode } from './daily'
 
 export type { Flair, View } from './playback'
@@ -91,6 +93,8 @@ export interface Game {
   level?: Level
   /** keep the next hand from being dealt (while looking back at this one) */
   hold?: (on: boolean) => void
+  /** the finished hand, packed for a replay link (null while it's still going) */
+  shareable?: () => ReplayData | null
 }
 
 export interface HostHooks {
@@ -380,5 +384,9 @@ export function useGame(o: {
   const daily: DailyState | null = o.daily
     ? { day: o.daily, played: engine?.phase === 'done' ? engine.hand : Math.max(0, (engine?.hand ?? 1) - 1), over: dailyOver, moves: moves.current.join(','), final: players[0].stack }
     : null
-  return { hold: setHeld, level: o.daily ? 'normal' : o.level, thoughts, view, players, myTurn, myHand, play, rebuy, canRebuy: !o.daily, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat, daily }
+  const shareable = (): ReplayData | null => {
+    if (!engine || engine.phase !== 'done') return null
+    return { v: 1, names: players.map((p) => p.name), chars: players.map((p) => p.character?.id ?? null), stacks: startStacks.current, events: maskFor(engine.events, meSeat), by: players[meSeat]?.name }
+  }
+  return { shareable, hold: setHeld, level: o.daily ? 'normal' : o.level, thoughts, view, players, myTurn, myHand, play, rebuy, canRebuy: !o.daily, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat, daily }
 }
