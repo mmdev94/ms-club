@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { LEVELS, type Level } from '../engine/brain'
 import { CHARACTERS } from '../engine/characters'
 import { Avatar } from './Avatar'
+import { playedToday } from './Daily'
 import { PlayingCard } from './Card'
 
 /** "Delivered by a miner": this page reads its own answer from ms.computer. */
@@ -19,8 +20,9 @@ function useServedBy() {
 
 const FAN = ['As', 'Kh', 'Qd', 'Jc', 'Ts']
 
-export function Lobby({ name, setName, level, setLevel, onPlay, onHost }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void }) {
+export function Lobby({ name, setName, level, setLevel, onPlay, onHost, onDaily, onBoard }: { name: string; setName: (n: string) => void; level: Level; setLevel: (l: Level) => void; onPlay: () => void; onHost: () => void; onDaily: () => void; onBoard: () => void }) {
   const servedBy = useServedBy()
+  const played = playedToday()
   return (
     <div className="relative min-h-full overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(91,42,134,.55),transparent_60%),radial-gradient(ellipse_at_50%_100%,rgba(15,92,69,.5),transparent_55%)]" />
@@ -74,6 +76,17 @@ export function Lobby({ name, setName, level, setLevel, onPlay, onHost }: { name
             Play with friends
           </button>
           <p className="text-[13px] leading-relaxed text-cream/45">Opens a private table and gives you a link. Friends join from any browser — no account. The regulars fill empty seats.</p>
+          <div className="mt-3 rounded-2xl border border-gold/35 bg-gradient-to-b from-gold/10 to-transparent p-4 text-left">
+            <p className="flex items-center justify-between">
+              <span className="font-display text-2xl text-cream">Daily Table</span>
+              <span className="rounded-full bg-gold/20 px-2.5 py-0.5 text-[12px] font-semibold text-gold">{played === null ? 'new today' : `today ${played >= 2000 ? '+' : '−'}${Math.abs(played - 2000).toLocaleString('en-US')}`}</span>
+            </p>
+            <p className="mt-1 text-[14px] leading-snug text-cream/65">20 hands, same cards for everyone today. Post your score — every score is replayed and checked.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button onClick={onDaily} className="btn-gold py-2.5 text-[15px]">{played === null ? 'Play today' : 'Practice'}</button>
+              <button onClick={onBoard} className="btn-dark py-2.5 text-[15px]">Leaderboard</button>
+            </div>
+          </div>
         </div>
 
         <h2 className="mt-16 font-display text-3xl text-cream">Meet the regulars</h2>

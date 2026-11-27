@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/engine/*.test.ts"
+    "test": "node --experimental-strip-types --test src/engine/*.test.ts src/game/*.test.ts"
   },
   "dependencies": {
     "@dicebear/core": "9.4.2",

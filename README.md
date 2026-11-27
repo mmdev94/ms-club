@@ -20,6 +20,13 @@ Measured with `scripts/arena.ts`: 3,000 deals per seating, every deal played twi
 
 Hard vs Normal heads-up: +2.7 bb/100. Everything runs in the browser; the pre-flop tier chart is adapted from [poker-ai-coach](https://github.com/ArTeria21/poker-ai-coach) (MIT) — see NOTICE.
 
+## Daily Table and leaderboard
+
+- **Daily Table:** 20 hands against the four regulars (Normal), the same for everyone that day: the cards come from the day's seed, and so does every random choice the bots make. A whole session is therefore decided by the player's moves alone (src/game/daily.ts).
+- **Leaderboard, no database:** a score is a message signed by the player's browser (Nostr event, kind 30078) and posted to public relays, carrying every move. Visitors' browsers fetch the day's scores and **replay each one** in a background worker; only scores whose replay ends with the claimed chips are ranked. Today, any past day (`#/board/2026-11-27`) and this week.
+- One posted score per day per browser; later runs that day are practice.
+- Honest limit: someone who reads the code could compute the day's cards in advance. The replay stops fake scores, not foresight.
+
 ## Play with friends
 
 "Play with friends" opens a private table and gives you a link. Friends join from any browser — no account, no server:

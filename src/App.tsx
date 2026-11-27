@@ -3,6 +3,7 @@ import type { Level } from './engine/brain'
 import { lookFor } from './game/looks'
 import { useGame } from './game/useGame'
 import { Controls } from './ui/Controls'
+import { Board, DailyScreen } from './ui/Daily'
 import { Lobby } from './ui/Lobby'
 import { GuestScreen, HostScreen } from './ui/Online'
 import { Table } from './ui/Table'
@@ -22,11 +23,15 @@ const save = (k: string, v: string) => {
   }
 }
 
-type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string }
+type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string }
 
 const fromHash = (): Screen => {
   const m = /^#\/t\/(.+)$/.exec(location.hash)
-  return m ? { at: 'join', roomId: decodeURIComponent(m[1]) } : { at: 'lobby' }
+  if (m) return { at: 'join', roomId: decodeURIComponent(m[1]) }
+  if (location.hash === '#/daily') return { at: 'daily' }
+  const b = /^#\/board(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(location.hash)
+  if (b) return { at: 'board', day: b[1] }
+  return { at: 'lobby' }
 }
 
 function Solo({ name, level, onLeave }: { name: string; level: Level; onLeave: () => void }) {
@@ -70,14 +75,20 @@ export default function App() {
     setScreen({ at: 'lobby' })
   }
   const who = name.trim() || 'You'
+  const go = (at: 'daily' | 'board') => {
+    history.replaceState(null, '', `${location.pathname}#/${at}`)
+    setScreen({ at })
+  }
   return (
     <div className="h-full">
       {screen.at === 'solo' && <Solo name={who} level={level} onLeave={toLobby} />}
       {screen.at === 'host' && <HostScreen name={who} level={level} onLeave={toLobby} />}
       {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} onLeave={toLobby} />}
+      {screen.at === 'daily' && <DailyScreen name={who} onLeave={toLobby} onBoard={() => go('board')} />}
+      {screen.at === 'board' && <Board onLeave={toLobby} onPlay={() => go('daily')} start={screen.day} />}
       {screen.at === 'lobby' && (
         <div className="h-full overflow-y-auto">
-          <Lobby name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} />
+          <Lobby name={name} setName={setName} level={level} setLevel={setLevel} onPlay={() => setScreen({ at: 'solo' })} onHost={() => setScreen({ at: 'host' })} onDaily={() => go('daily')} onBoard={() => go('board')} />
         </div>
       )}
     </div>

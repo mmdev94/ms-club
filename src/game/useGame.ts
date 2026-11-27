@@ -8,6 +8,7 @@ import { CHARACTERS, line, type Character } from '../engine/characters'
 import { shortName } from '../engine/hand'
 import { act, legal, startHand, type Action, type Legal, type State } from '../engine/holdem'
 import { moodFor, usePlayback, type Flair, type View } from './playback'
+import { botRandom, DAILY_HANDS, dailySeed, encode } from './daily'
 
 export type { Flair, View } from './playback'
 export type { SeatView, Flight } from './playback'
@@ -71,6 +72,26 @@ export interface Table extends Game {
   patchSeat: (seat: number, patch: Partial<Player>) => void
 }
 
+export interface DailyState {
+  day: string
+  /** hands finished */
+  played: number
+  over: boolean
+  /** the player's moves, encoded ("c,k,r60,…") */
+  moves: string
+  final: number
+}
+
+/** The move as the rules will actually treat it (a fold when you could check is a check, and so on). */
+export function normalize(s: State, a: Action): Action {
+  const l = legal(s)!
+  if (a.type === 'fold') return l.canCheck ? { type: 'check' } : a
+  if (a.type === 'check') return l.canCheck ? a : { type: 'fold' }
+  if (a.type === 'call') return l.canCheck ? { type: 'check' } : a
+  if (!l.canRaise) return { type: l.canCheck ? 'check' : 'call' }
+  return { type: 'raise', to: Math.max(l.minTo, Math.min(l.maxTo, Math.floor(a.to))) }
+}
+
 export const botSeats = (n = 4): Player[] => CHARACTERS.slice(0, n).map((c) => ({ id: c.id, name: c.name, stack: START_STACK, character: c, kind: 'bot' }))
 
 export function useGame(o: {
@@ -83,7 +104,9 @@ export function useGame(o: {
   look?: Look
   /** produce the deck for a hand before it's dealt (the fair shuffle at friends' tables) */
   prepare?: (hand: number, players: Player[]) => Promise<Card[]>
-}): Table {
+  /** play today's Daily Table ("2026-11-27"): fixed cards, seeded bots, 20 hands, moves recorded */
+  daily?: string
+}): Table & { daily: DailyState | null } {
   const random = useRef(rng(o.seed ?? `${Date.now()}:${Math.random()}`)).current
   const [players, setPlayers] = useState<Player[]>(() => o.seats ?? [{ id: 'you', name: o.name, stack: START_STACK, character: null, kind: 'me', look: o.look }, ...botSeats()])
   const [engine, setEngine] = useState<State | null>(null)
@@ -93,7 +116,10 @@ export function useGame(o: {
   const [deadline, setDeadline] = useState<number | null>(null)
   const startStacks = useRef<number[]>(players.map((p) => p.stack))
   const handNo = useRef(0)
-  const dealer = useRef(Math.floor(random() * 5))
+  const dealer = useRef(o.daily ? 4 : Math.floor(random() * 5))
+  const botRand = useRef(o.daily ? botRandom(o.daily) : random).current
+  const moves = useRef<string[]>([])
+  const [dailyOver, setDailyOver] = useState(false)
   const bluffs = useRef(new Set<number>())
   const memory = useRef<Memory>(new Map())
   const pending = useRef(new Map<number, Player | ((old: Player) => Player)>())
@@ -148,7 +174,7 @@ export function useGame(o: {
         startStacks.current = ps.map((p) => p.stack)
         const s = startHand(
           ps.map((p) => ({ id: p.id, name: p.name, stack: p.stack })),
-          { hand, dealer: dealer.current, sb: BLINDS[0], bb: BLINDS[1], deck, seed: `${o.seed ?? 'free'}:${hand}:${random()}` },
+          { hand, dealer: dealer.current, sb: BLINDS[0], bb: BLINDS[1], deck, seed: o.daily ? dailySeed(o.daily, hand) : `${o.seed ?? 'free'}:${hand}:${random()}` },
         )
         setPlayers(ps)
         setEngine(s)
@@ -173,6 +199,10 @@ export function useGame(o: {
     learn(memory.current, players.map((p) => p.id), engine.events)
     const next = players.map((p, i) => ({ ...p, stack: engine.seats[i].stack }))
     setPlayers(next)
+    if (o.daily && (engine.hand >= DAILY_HANDS || next[0].stack <= 0)) {
+      setDailyOver(true)
+      return
+    }
     const t = setTimeout(() => {
       if (next.findIndex((p) => p.kind === 'me') >= 0 && next.find((p) => p.kind === 'me')!.stack <= 0) return // you decide (rebuy)
       deal(next)
@@ -203,7 +233,7 @@ export function useGame(o: {
     const c = p.character!
     const t = setTimeout(
       () => {
-        const d = think(engine, c, o.level, random, memory.current, players.map((x) => x.id))
+        const d = think(engine, c, o.daily ? 'normal' : o.level, botRand, memory.current, players.map((x) => x.id))
         const next = act(engine, d.action)
         const last = next.events.findLast((x) => x.type === 'act')
         if (last?.type === 'act') {
@@ -247,7 +277,15 @@ export function useGame(o: {
     [engine, flair],
   )
 
-  const play = useCallback((a: Action) => apply(meSeat, a), [apply, meSeat])
+  const play = useCallback(
+    (a: Action) => {
+      if (!engine || engine.toAct !== meSeat || engine.phase === 'done') return
+      const n = normalize(engine, a)
+      if (o.daily) moves.current.push(encode(n))
+      apply(meSeat, n)
+    },
+    [apply, meSeat, engine, o.daily],
+  )
   const applyRemote = useCallback(
     (seat: number, hand: number, a: Action) => {
       if (!engine || engine.hand !== hand || players[seat]?.kind !== 'remote') return
@@ -274,5 +312,8 @@ export function useGame(o: {
   const patchSeat = useCallback((seat: number, patch: Partial<Player>) => setPlayers((ps) => ps.map((x, i) => (i === seat ? { ...x, ...patch } : x))), [])
 
   const land = useCallback((id: number) => dispatch({ type: 'land', id }), [dispatch])
-  return { view, players, myTurn, myHand, play, rebuy, canRebuy: true, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat }
+  const daily: DailyState | null = o.daily
+    ? { day: o.daily, played: engine?.phase === 'done' ? engine.hand : Math.max(0, (engine?.hand ?? 1) - 1), over: dailyOver, moves: moves.current.join(','), final: players[0].stack }
+    : null
+  return { view, players, myTurn, myHand, play, rebuy, canRebuy: !o.daily, fast, setFast, thinking, deadline, land, engine, started, start, applyRemote, setSeat, patchSeat, daily }
 }

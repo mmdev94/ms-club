@@ -173,7 +173,8 @@ export function act(prev: State, a: Action): State {
   const p = s.seats[i]
   const owed = s.currentBet - p.bet
 
-  if (a.type === 'fold' && owed > 0) {
+  // a check facing a bet isn't possible: it counts as a fold
+  if ((a.type === 'fold' || a.type === 'check') && owed > 0) {
     p.folded = true
     s.events.push({ type: 'act', seat: i, kind: 'fold', amount: 0, to: p.bet })
   } else if (a.type === 'check' || (a.type === 'fold' && owed <= 0) || (a.type === 'call' && owed <= 0)) {
