@@ -4,6 +4,7 @@ import { lookFor } from './game/looks'
 import { useGame } from './game/useGame'
 import { Controls } from './ui/Controls'
 import { Board, DailyScreen } from './ui/Daily'
+import { OgCard } from './ui/Og'
 import { Lobby } from './ui/Lobby'
 import { GuestScreen, HostScreen } from './ui/Online'
 import { Table } from './ui/Table'
@@ -23,12 +24,13 @@ const save = (k: string, v: string) => {
   }
 }
 
-type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string }
+type Screen = { at: 'lobby' } | { at: 'solo' } | { at: 'host' } | { at: 'join'; roomId: string } | { at: 'daily' } | { at: 'board'; day?: string } | { at: 'og' }
 
 const fromHash = (): Screen => {
   const m = /^#\/t\/(.+)$/.exec(location.hash)
   if (m) return { at: 'join', roomId: decodeURIComponent(m[1]) }
   if (location.hash === '#/daily') return { at: 'daily' }
+  if (location.hash === '#/og') return { at: 'og' }
   const b = /^#\/board(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(location.hash)
   if (b) return { at: 'board', day: b[1] }
   return { at: 'lobby' }
@@ -84,6 +86,7 @@ export default function App() {
       {screen.at === 'solo' && <Solo name={who} level={level} onLeave={toLobby} />}
       {screen.at === 'host' && <HostScreen name={who} level={level} onLeave={toLobby} />}
       {screen.at === 'join' && <GuestScreen roomId={screen.roomId} name={name === 'You' ? '' : name} setName={setName} onLeave={toLobby} />}
+      {screen.at === 'og' && <OgCard />}
       {screen.at === 'daily' && <DailyScreen name={who} onLeave={toLobby} onBoard={() => go('board')} />}
       {screen.at === 'board' && <Board onLeave={toLobby} onPlay={() => go('daily')} start={screen.day} />}
       {screen.at === 'lobby' && (

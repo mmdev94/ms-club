@@ -133,8 +133,9 @@ export interface Flair {
 export function bannerFor(e: Extract<Event, { type: 'award' }>, events: Event[], names: string[]): string {
   const who = e.winners.map((w) => names[w.seat] ?? 'Someone')
   const amount = e.winners.reduce((a, w) => a + w.amount, 0).toLocaleString('en-US')
-  if (e.hand === null && !e.side && events.every((x) => x.type !== 'reveal')) return `${who[0]} takes ${amount}`
-  return `${who.join(' & ')} ${who.length > 1 ? 'split' : 'wins'} ${amount}${e.hand ? ` with ${e.hand}` : ''}`
+  const you = who.length === 1 && who[0] === 'You'
+  if (e.hand === null && !e.side && events.every((x) => x.type !== 'reveal')) return `${who[0]} ${you ? 'take' : 'takes'} ${amount}`
+  return `${who.join(' & ')} ${who.length > 1 ? 'split' : you ? 'win' : 'wins'} ${amount}${e.hand ? ` with ${e.hand}` : ''}`
 }
 
 /**
